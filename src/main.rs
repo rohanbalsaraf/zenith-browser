@@ -421,10 +421,40 @@ fn tab_initialization_script(tab_id: u32) -> String {
                 }} catch (_) {{}}
             }});
 
+            var ensureYoutubeAccountSync = function() {{
+                try {{
+                    var host = (window.location.hostname || '').toLowerCase();
+                    if (!(host === 'youtube.com' || host === 'www.youtube.com' || host === 'm.youtube.com')) return;
+                    var path = (window.location.pathname || '').replace(/\/+$/, '');
+                    if (path !== '' && path !== '/') return;
+                    var storageKey = '__zenith_yt_home_sync_reload_done';
+                    if (sessionStorage.getItem(storageKey) === '1') return;
+
+                    setTimeout(function() {{
+                        try {{
+                            var hasSignIn = !!document.querySelector("a[href*='ServiceLogin']");
+                            var hasAvatarButton = !!document.querySelector(
+                                "ytd-topbar-menu-button-renderer #avatar-btn, button#avatar-btn"
+                            );
+                            if (hasSignIn && !hasAvatarButton) {{
+                                sessionStorage.setItem(storageKey, '1');
+                                window.location.reload();
+                            }}
+                        }} catch (_) {{}}
+                    }}, 1400);
+                }} catch (_) {{}}
+            }};
+
+            window.addEventListener('yt-navigate-finish', ensureYoutubeAccountSync);
+
             if (document.readyState === 'loading') {{
-                document.addEventListener('DOMContentLoaded', notifyUrl, {{ once: true }});
+                document.addEventListener('DOMContentLoaded', function() {{
+                    notifyUrl();
+                    ensureYoutubeAccountSync();
+                }}, {{ once: true }});
             }} else {{
                 notifyUrl();
+                ensureYoutubeAccountSync();
             }}
         }})();
         "#
@@ -860,7 +890,7 @@ fn main() {
                     }
                     if should_warmup_youtube_account_sync(&tab.url) {
                         let _ = proxy.send_event(UserEvent::OpenBackgroundAuthSync(
-                            "https://accounts.google.com/ListAccounts?gpsia=1".to_string(),
+                            "https://accounts.google.com/RotateCookiesPage".to_string(),
                         ));
                     }
                     apply_browser_theme_to_tab(tab, &current_theme);
