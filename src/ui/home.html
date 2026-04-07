@@ -109,6 +109,7 @@
         .recent-favicon { width: 16px; height: 16px; border-radius: 3px; flex-shrink: 0; }
         .recent-url { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .recent-title { font-size: 13px; color: var(--text); margin-left: auto; flex-shrink: 0; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #bookmarks-section { display: none; }
         #recents-section { display: none; }
     </style>
 </head>
@@ -168,6 +169,11 @@
     <div class="recents" id="recents-section">
         <div class="shortcuts-label">Recently Visited</div>
         <div class="recents-grid" id="recents-grid"></div>
+    </div>
+
+    <div class="recents" id="bookmarks-section">
+        <div class="shortcuts-label">Bookmarks</div>
+        <div class="recents-grid" id="bookmarks-grid"></div>
     </div>
 </div>
 
@@ -237,31 +243,34 @@ document.querySelectorAll('.shortcut[data-url]').forEach(el => {
     el.addEventListener('click', () => go(el.dataset.url));
 });
 
-// ── Recent sites (sent by parent shell) ──────────────────────────────────────
-window.addEventListener('message', e => {
-    if (!e.data || typeof e.data !== 'object') return;
-    if (e.data.type === 'theme') {
-        applyTheme(e.data.theme);
+function hostFromUrl(url) {
+    try {
+        return new URL(url).hostname;
+    } catch (_) {
+        return url || '';
+    }
+}
+
+function renderSiteList(sectionId, gridId, sites) {
+    const section = document.getElementById(sectionId);
+    const grid = document.getElementById(gridId);
+    if (!section || !grid) return;
+
+    if (!Array.isArray(sites) || !sites.length) {
+        section.style.display = 'none';
+        grid.innerHTML = '';
         return;
     }
 
-    if (!e.data || e.data.type !== 'recent-sites') return;
-    const sites = e.data.sites || [];
-    if (!sites.length) return;
-
-    const section = document.getElementById('recents-section');
-    const grid    = document.getElementById('recents-grid');
     section.style.display = 'block';
     grid.innerHTML = '';
 
     sites.forEach(site => {
         const item = document.createElement('div');
         item.className = 'recent-item';
-        item.title = site.url;
+        item.title = site.url || '';
 
-        let host = site.url;
-        try { host = new URL(site.url).hostname; } catch {}
-
+        const host = hostFromUrl(site.url || '');
         item.innerHTML = `
             <img class="recent-favicon" src="https://www.google.com/s2/favicons?domain=${host}&sz=32" alt="">
             <span class="recent-url">${host}</span>
@@ -269,6 +278,24 @@ window.addEventListener('message', e => {
         item.addEventListener('click', () => go(site.url));
         grid.appendChild(item);
     });
+}
+
+// ── Data sync (sent by parent shell) ─────────────────────────────────────────
+window.addEventListener('message', e => {
+    if (!e.data || typeof e.data !== 'object') return;
+    if (e.data.type === 'theme') {
+        applyTheme(e.data.theme);
+        return;
+    }
+
+    if (e.data.type === 'recent-sites') {
+        renderSiteList('recents-section', 'recents-grid', e.data.sites || []);
+        return;
+    }
+
+    if (e.data.type === 'bookmarks-data') {
+        renderSiteList('bookmarks-section', 'bookmarks-grid', e.data.bookmarks || []);
+    }
 });
 
 window.addEventListener('storage', e => {

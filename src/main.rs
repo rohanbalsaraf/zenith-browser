@@ -38,6 +38,7 @@ enum UserEvent {
         action: BrowserAction,
     },
     OpenSettingsTab,
+    BookmarkActiveTab(Option<u32>),
     OpenAuthWindow(String),
     OpenBackgroundAuthSync(String),
     TabUrlChanged {
@@ -111,6 +112,12 @@ struct RecentSite {
     title: String,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+struct BookmarkSite {
+    url: String,
+    title: String,
+}
+
 fn is_http_like_url(url: &str) -> bool {
     url.starts_with("http://") || url.starts_with("https://")
 }
@@ -129,6 +136,10 @@ fn profile_directory() -> PathBuf {
 
 fn recent_sites_path() -> PathBuf {
     profile_directory().join("recent-sites.json")
+}
+
+fn bookmarks_path() -> PathBuf {
+    profile_directory().join("bookmarks.json")
 }
 
 fn fallback_title_for_url(raw_url: &str) -> String {
@@ -194,11 +205,27 @@ fn load_recent_sites(path: &PathBuf) -> Vec<RecentSite> {
     serde_json::from_str::<Vec<RecentSite>>(&raw).unwrap_or_default()
 }
 
+fn load_bookmarks(path: &PathBuf) -> Vec<BookmarkSite> {
+    let Ok(raw) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    serde_json::from_str::<Vec<BookmarkSite>>(&raw).unwrap_or_default()
+}
+
 fn save_recent_sites(path: &PathBuf, recent_sites: &[RecentSite]) {
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }
     if let Ok(serialized) = serde_json::to_string(recent_sites) {
+        let _ = fs::write(path, serialized);
+    }
+}
+
+fn save_bookmarks(path: &PathBuf, bookmarks: &[BookmarkSite]) {
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Ok(serialized) = serde_json::to_string(bookmarks) {
         let _ = fs::write(path, serialized);
     }
 }
@@ -252,6 +279,40 @@ fn upsert_recent_site(recent_sites: &mut Vec<RecentSite>, raw_url: &str, raw_tit
     const MAX_RECENT_SITES: usize = 20;
     if recent_sites.len() > MAX_RECENT_SITES {
         recent_sites.truncate(MAX_RECENT_SITES);
+        changed = true;
+    }
+
+    changed
+}
+
+fn upsert_bookmark(bookmarks: &mut Vec<BookmarkSite>, raw_url: &str, raw_title: &str) -> bool {
+    if !should_track_recent_site(raw_url) {
+        return false;
+    }
+
+    let title = resolved_tab_title(raw_title, raw_url);
+    let mut changed = false;
+
+    if let Some(existing) = bookmarks.iter().position(|s| s.url == raw_url) {
+        let item = bookmarks.remove(existing);
+        if existing != 0 || item.title != title {
+            changed = true;
+        }
+    } else {
+        changed = true;
+    }
+
+    bookmarks.insert(
+        0,
+        BookmarkSite {
+            url: raw_url.to_string(),
+            title,
+        },
+    );
+
+    const MAX_BOOKMARKS: usize = 50;
+    if bookmarks.len() > MAX_BOOKMARKS {
+        bookmarks.truncate(MAX_BOOKMARKS);
         changed = true;
     }
 
@@ -587,6 +648,19 @@ fn sync_recent_sites_to_tab(tab: &BrowserTab, recent_sites: &[RecentSite]) {
     }
 }
 
+fn sync_bookmarks_to_tab(tab: &BrowserTab, bookmarks: &[BookmarkSite]) {
+    if !tab.url.starts_with(HOME_URL) {
+        return;
+    }
+
+    if let Ok(bookmarks_json) = serde_json::to_string(bookmarks) {
+        let js = format!(
+            "window.postMessage({{ type: 'bookmarks-data', bookmarks: {bookmarks_json} }}, '*');"
+        );
+        let _ = tab.webview.evaluate_script(&js);
+    }
+}
+
 fn apply_tab_visibility(tabs: &[BrowserTab], active_tab_id: Option<u32>) {
     for tab in tabs {
         let _ = tab.webview.set_visible(Some(tab.id) == active_tab_id);
@@ -665,6 +739,9 @@ fn dispatch_ipc_message(
         }
         "open_settings_tab" => {
             let _ = proxy.send_event(UserEvent::OpenSettingsTab);
+        }
+        "bookmark_active_tab" => {
+            let _ = proxy.send_event(UserEvent::BookmarkActiveTab(tab_id));
         }
         "open_auth" => {
             if fallback_tab_id.is_none()
@@ -772,6 +849,7 @@ fn main() {
     let profile_dir = profile_directory();
     let mut web_context = WebContext::new(Some(profile_dir.join("webview")));
     let recent_sites_path = recent_sites_path();
+    let bookmarks_path = bookmarks_path();
 
     let window = WindowBuilder::new()
         .with_title("Zenith")
@@ -809,6 +887,7 @@ fn main() {
     let mut auth_windows: Vec<AuthWindow> = Vec::new();
     let mut background_sync_webview: Option<WebView> = None;
     let mut recent_sites = load_recent_sites(&recent_sites_path);
+    let mut bookmarks = load_bookmarks(&bookmarks_path);
 
     if let Some(initial_tab) = build_browser_tab(
         &window,
@@ -836,6 +915,7 @@ fn main() {
                 sync_chrome_state(&chrome_webview, &tabs, active_tab_id);
                 for tab in &tabs {
                     sync_recent_sites_to_tab(tab, &recent_sites);
+                    sync_bookmarks_to_tab(tab, &bookmarks);
                 }
             }
             Event::UserEvent(UserEvent::NewTab { url, activate }) => {
@@ -854,6 +934,10 @@ fn main() {
                     tabs.push(tab);
                     if activate || active_tab_id.is_none() {
                         active_tab_id = Some(next_tab_id);
+                    }
+                    if let Some(new_tab) = tabs.last() {
+                        sync_recent_sites_to_tab(new_tab, &recent_sites);
+                        sync_bookmarks_to_tab(new_tab, &bookmarks);
                     }
                     next_tab_id += 1;
                     apply_tab_visibility(&tabs, active_tab_id);
@@ -949,6 +1033,20 @@ fn main() {
                     });
                 }
             }
+            Event::UserEvent(UserEvent::BookmarkActiveTab(tab_id)) => {
+                if let Some(target_id) = tab_id.or(active_tab_id)
+                    && let Some(tab) = tabs.iter().find(|t| t.id == target_id)
+                {
+                    let bookmark_url = tab.url.clone();
+                    let bookmark_title = tab.title.clone();
+                    if upsert_bookmark(&mut bookmarks, &bookmark_url, &bookmark_title) {
+                        save_bookmarks(&bookmarks_path, &bookmarks);
+                        for t in &tabs {
+                            sync_bookmarks_to_tab(t, &bookmarks);
+                        }
+                    }
+                }
+            }
             Event::UserEvent(UserEvent::OpenAuthWindow(url)) => {
                 if is_http_like_url(&url) {
                     let popup_proxy = proxy.clone();
@@ -1039,9 +1137,11 @@ fn main() {
                         save_recent_sites(&recent_sites_path, &recent_sites);
                         for tab in &tabs {
                             sync_recent_sites_to_tab(tab, &recent_sites);
+                            sync_bookmarks_to_tab(tab, &bookmarks);
                         }
                     } else if let Some(home_tab) = tabs.get(index) {
                         sync_recent_sites_to_tab(home_tab, &recent_sites);
+                        sync_bookmarks_to_tab(home_tab, &bookmarks);
                     }
 
                     if chrome_ready {
@@ -1066,7 +1166,12 @@ fn main() {
                         save_recent_sites(&recent_sites_path, &recent_sites);
                         for tab in &tabs {
                             sync_recent_sites_to_tab(tab, &recent_sites);
+                            sync_bookmarks_to_tab(tab, &bookmarks);
                         }
+                    }
+
+                    if let Some(tab) = tabs.get(index) {
+                        sync_bookmarks_to_tab(tab, &bookmarks);
                     }
 
                     if chrome_ready {
@@ -1136,11 +1241,12 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    use super::BookmarkSite;
     use super::RecentSite;
     use super::{
         fallback_title_for_url, is_background_google_account_sync_url, normalize_user_input_url,
         resolved_tab_title, should_open_auth_window, should_track_recent_site,
-        should_warmup_youtube_account_sync, upsert_recent_site,
+        should_warmup_youtube_account_sync, upsert_bookmark, upsert_recent_site,
     };
 
     #[test]
@@ -1251,5 +1357,19 @@ mod tests {
         assert_eq!(sites[0].url, "https://a.com");
         assert_eq!(sites[0].title, "Site A");
         assert_eq!(sites.len(), 2);
+    }
+
+    #[test]
+    fn upsert_bookmark_adds_and_prioritizes_latest() {
+        let mut bookmarks = vec![BookmarkSite {
+            url: "https://example.com".to_string(),
+            title: "Example".to_string(),
+        }];
+        assert!(upsert_bookmark(
+            &mut bookmarks,
+            "https://github.com",
+            "GitHub - Build software better"
+        ));
+        assert_eq!(bookmarks[0].url, "https://github.com");
     }
 }

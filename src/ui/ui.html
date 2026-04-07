@@ -41,6 +41,9 @@
     <div class="menu-item" id="m-close-tab"><span class="menu-item-icon">✕</span>Close Tab<span class="menu-kbd">⌘W</span></div>
     <div class="menu-item" id="m-settings"><span class="menu-item-icon">⚙</span>Settings<span class="menu-kbd">⌘,</span></div>
     <div class="menu-divider"></div>
+    <div class="menu-section-label">Library</div>
+    <div class="menu-item" id="m-bookmark"><span class="menu-item-icon">★</span>Bookmark This Tab<span class="menu-kbd">⌘D</span></div>
+    <div class="menu-divider"></div>
     <div class="menu-section-label">Appearance</div>
     <div class="menu-item" id="m-theme"><span class="menu-item-icon">◑</span><span id="theme-label">Light Mode</span></div>
 </div>
@@ -220,6 +223,12 @@ function sendAction(action) {
     send({ type: 'tab_action', tabId: activeId, action });
 }
 
+function bookmarkActiveTab() {
+    if (activeId === null) return;
+    send({ type: 'bookmark_active_tab', tabId: activeId });
+    settMenu.classList.add('hidden');
+}
+
 urlInput.onkeydown = (e) => {
     if (e.key === 'Enter') {
         navigateActive(urlInput.value);
@@ -236,6 +245,7 @@ document.onclick = () => settMenu.classList.add('hidden');
 document.getElementById('m-new-tab').onclick = () => createTab();
 document.getElementById('m-close-tab').onclick = () => closeActiveTab();
 document.getElementById('m-settings').onclick = () => openSettingsTab();
+document.getElementById('m-bookmark').onclick = () => bookmarkActiveTab();
 document.getElementById('m-theme').onclick = () => {
     darkMode = !darkMode;
     applyTheme();
@@ -262,6 +272,10 @@ document.addEventListener('keydown', (e) => {
     if (key === 'r') {
         e.preventDefault();
         sendAction('reload');
+    }
+    if (key === 'd') {
+        e.preventDefault();
+        bookmarkActiveTab();
     }
     if (e.key === ',') {
         e.preventDefault();
