@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-wry = "0.55"
+wry = { version = "0.55", features = ["fullscreen"] }
 tao = { version = "0.35" }
 muda = "0.17.2"
 serde = { version = "1.0", features = ["derive"] }

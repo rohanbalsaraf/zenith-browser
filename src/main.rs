@@ -744,10 +744,10 @@ fn tab_initialization_script(tab_id: u32) -> String {
             }}
 
             // Shim mediaDevices if missing (common in insecure contexts or unbundled apps)
-            if (!navigator.mediaDevices) {{
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {{
                 var mockMediaDevices = {{
                     getUserMedia: function() {{ 
-                        return Promise.reject(new DOMException("The requested operation is not supported by this browser context (Secure Context or App Permissions required)", "NotSupportedError")); 
+                        return Promise.reject(new DOMException("Hardware access was denied by the OS or the browser context is insecure (HTTPS required for real hardware).", "NotAllowedError")); 
                     }},
                     enumerateDevices: function() {{ return Promise.resolve([]); }},
                     addEventListener: function() {{}},
@@ -756,10 +756,14 @@ fn tab_initialization_script(tab_id: u32) -> String {
                     ondevicechange: null
                 }};
                 try {{
-                    Object.defineProperty(navigator, 'mediaDevices', {{
-                        get: function() {{ return mockMediaDevices; }},
-                        configurable: true
-                    }});
+                    if (!navigator.mediaDevices) {{
+                        Object.defineProperty(navigator, 'mediaDevices', {{
+                            get: function() {{ return mockMediaDevices; }},
+                            configurable: true
+                        }});
+                    }} else if (!navigator.mediaDevices.getUserMedia) {{
+                        navigator.mediaDevices.getUserMedia = mockMediaDevices.getUserMedia;
+                    }}
                 }} catch (e) {{}}
             }}
             // Spoof Secure Context to enable features on zenith:// schemes
@@ -1168,37 +1172,36 @@ fn build_browser_tab(
     let protocol_html = ui_html;
     let init_script = tab_initialization_script(tab_id);
 
-    let webview = WebViewBuilder::new_with_web_context(web_context)
+    let mut webview_builder = WebViewBuilder::new_with_web_context(web_context)
         .with_user_agent(CUSTOM_USER_AGENT)
         .with_bounds(bounds)
         .with_url(url)
-        .with_back_forward_navigation_gestures(true)
         .with_initialization_script(&init_script)
-        .with_navigation_handler(move |next| {
+        .with_navigation_handler(move |next: String| {
             if next.starts_with("zenith://") {
                 return is_assets_url(&next);
             }
 
             is_http_like_url(&next)
         })
-        .with_new_window_req_handler(move |next, _features| {
+        .with_new_window_req_handler(move |next: String, _features: wry::NewWindowFeatures| {
             let next_url = next.clone();
-            if (is_background_google_account_sync_url(&next)) {
-                let _ = popup_proxy.send_event(UserEvent::OpenBackgroundAuthSync(next));
+            if is_background_google_account_sync_url(&next_url) {
+                let _ = popup_proxy.send_event(UserEvent::OpenBackgroundAuthSync(next_url));
                 wry::NewWindowResponse::Deny
-            } else if should_open_auth_window(&next) {
+            } else if should_open_auth_window(&next_url) {
                 // Determine if this is a background-like redirect that should just navigate current tab
-                let Ok(parsed) = Url::parse(&next) else { return wry::NewWindowResponse::Deny };
+                let Ok(parsed) = Url::parse(&next_url) else { return wry::NewWindowResponse::Deny };
                 let host = parsed.host_str().unwrap_or_default();
                 if host == "accounts.google.com" && (parsed.path().contains("checkcookie") || parsed.path().contains("rotatecookiespage")) {
-                    let _ = popup_proxy.send_event(UserEvent::NavigateTab { tab_id: Some(tab_id), url: next });
+                    let _ = popup_proxy.send_event(UserEvent::NavigateTab { tab_id: Some(tab_id), url: next_url });
                 } else {
-                    let _ = popup_proxy.send_event(UserEvent::OpenAuthWindow(next));
+                    let _ = popup_proxy.send_event(UserEvent::OpenAuthWindow(next_url));
                 }
                 wry::NewWindowResponse::Deny
-            } else if is_http_like_url(&next) {
+            } else if is_http_like_url(&next_url) {
                 let _ = popup_proxy.send_event(UserEvent::NewTab {
-                    url: Some(next),
+                    url: Some(next_url),
                     activate: true,
                 });
                 wry::NewWindowResponse::Deny
@@ -1206,16 +1209,16 @@ fn build_browser_tab(
                 wry::NewWindowResponse::Deny
             }
         })
-        .with_document_title_changed_handler(move |title| {
+        .with_document_title_changed_handler(move |title: String| {
             let _ = title_proxy.send_event(UserEvent::TabTitleChanged { tab_id, title });
         })
-        .with_on_page_load_handler(move |_event: PageLoadEvent, url| {
+        .with_on_page_load_handler(move |_event: PageLoadEvent, url: String| {
             let _ = load_proxy.send_event(UserEvent::TabUrlChanged { tab_id, url });
         })
-        .with_download_started_handler(move |url, path| {
+        .with_download_started_handler(move |url: String, path: &mut std::path::PathBuf| {
             // If wry doesn't set a path, force it to ~/Downloads/<filename>
             if path.as_os_str().is_empty() {
-                if let Some(filename) = url.split('/').last().and_then(|f| if f.is_empty() { None } else { Some(f) }) {
+                if let Some(filename) = url.split('/').last().and_then(|f: &str| if f.is_empty() { None } else { Some(f) }) {
                     let dl_dir = dirs::download_dir().unwrap_or_else(|| std::path::PathBuf::from("/tmp"));
                     *path = dl_dir.join(filename.split('?').next().unwrap_or(filename));
                 }
@@ -1227,10 +1230,10 @@ fn build_browser_tab(
             });
             true
         })
-        .with_download_completed_handler(move |url, path, success| {
+        .with_download_completed_handler(move |url: String, path: Option<std::path::PathBuf>, success: bool| {
             let _ = download_complete_proxy.send_event(UserEvent::DownloadCompleted {
                 url,
-                path: path.map(|p| p.to_string_lossy().to_string()),
+                path: path.map(|p: std::path::PathBuf| p.to_string_lossy().to_string()),
                 success,
             });
         })
@@ -1239,7 +1242,9 @@ fn build_browser_tab(
         })
         .with_custom_protocol("zenith".into(), move |_id, request: Request<Vec<u8>>| {
             handle_zenith_request(protocol_html.as_str(), request)
-        })
+        });
+
+    let webview = webview_builder
         .build_as_child(window)
         .ok()?;
 
