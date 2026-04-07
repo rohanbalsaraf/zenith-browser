@@ -1448,8 +1448,8 @@ fn main() {
     let ui_html = include_str!("ui/ui.html");
     let ui_css = include_str!("ui/ui.css");
     let final_ui_html = Arc::new(ui_html.replace(
-        "<link rel=\"stylesheet\" href=\"ui.css\">",
-        &format!("<style>{}</style>", ui_css),
+        "<head>",
+        &format!("<head><style>{}</style>", ui_css),
     ));
 
 
