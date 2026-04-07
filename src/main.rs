@@ -1,10 +1,11 @@
 use serde::{Deserialize, Serialize};
 use tao::{
     event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop, EventLoopProxy},
+    event_loop::{ControlFlow, EventLoopBuilder},
     window::WindowBuilder,
+    dpi::{LogicalPosition, LogicalSize},
 };
-use wry::WebViewBuilder;
+use wry::{WebViewBuilder, Rect};
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type", content = "payload")]
@@ -25,12 +26,12 @@ enum UserEvent {
 }
 
 fn main() -> wry::Result<()> {
-    let event_loop = EventLoop::<UserEvent>::with_user_event();
+    let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
     let proxy = event_loop.create_proxy();
     
     let window = WindowBuilder::new()
         .with_title("Zenith Browser")
-        .with_inner_size(tao::dpi::LogicalSize::new(1200.0, 800.0))
+        .with_inner_size(LogicalSize::new(1200.0, 800.0))
         .build(&event_loop)
         .unwrap();
 
@@ -48,35 +49,32 @@ fn main() -> wry::Result<()> {
 
     // 1. UI WebView (Address Bar)
     let proxy_ui = proxy.clone();
-    let ui_webview = WebViewBuilder::new(&window)
-        .with_bounds(wry::Rect {
-            x: 0,
-            y: 0,
-            width: window.inner_size().width,
-            height: toolbar_height as u32,
+    let ui_webview = WebViewBuilder::new()
+        .with_bounds(Rect {
+            position: LogicalPosition::new(0.0, 0.0).into(),
+            size: LogicalSize::new(window.inner_size().width as f64, toolbar_height as f64).into(),
         })
-        .with_html(final_ui_html)?
-        .with_ipc_handler(move |msg| {
-            if let Ok(ipc_msg) = serde_json::from_str::<IpcMsg>(&msg) {
+        .with_html(final_ui_html)
+        .with_ipc_handler(move |request| {
+            let msg = request.body();
+            if let Ok(ipc_msg) = serde_json::from_str::<IpcMsg>(msg) {
                 let _ = proxy_ui.send_event(UserEvent::Ipc(ipc_msg));
             }
         })
-        .build()?;
+        .build(&window)?;
 
     // 2. Content WebView
     let proxy_content = proxy.clone();
-    let content_webview = WebViewBuilder::new(&window)
-        .with_bounds(wry::Rect {
-            x: 0,
-            y: toolbar_height,
-            width: window.inner_size().width,
-            height: window.inner_size().height - toolbar_height as u32,
+    let content_webview = WebViewBuilder::new()
+        .with_bounds(Rect {
+            position: LogicalPosition::new(0.0, toolbar_height as f64).into(),
+            size: LogicalSize::new(window.inner_size().width as f64, (window.inner_size().height - toolbar_height as u32) as f64).into(),
         })
-        .with_url("https://www.google.com")?
+        .with_url("https://www.google.com")
         .with_on_page_load_handler(move |_event, url| {
             let _ = proxy_content.send_event(UserEvent::UrlChanged(url));
         })
-        .build()?;
+        .build(&window)?;
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
@@ -114,22 +112,20 @@ fn main() -> wry::Result<()> {
                 ..
             } => {
                 let size = window.inner_size();
-                let _ = ui_webview.set_bounds(wry::Rect {
-                    x: 0,
-                    y: 0,
-                    width: size.width,
-                    height: toolbar_height as u32,
+                let _ = ui_webview.set_bounds(Rect {
+                    position: LogicalPosition::new(0.0, 0.0).into(),
+                    size: LogicalSize::new(size.width as f64, toolbar_height as f64).into(),
                 });
                 
-                let _ = content_webview.set_bounds(wry::Rect {
-                    x: 0,
-                    y: toolbar_height,
-                    width: size.width,
-                    height: size.height - toolbar_height as u32,
+                let _ = content_webview.set_bounds(Rect {
+                    position: LogicalPosition::new(0.0, toolbar_height as f64).into(),
+                    size: LogicalSize::new(size.width as f64, (size.height - toolbar_height as u32) as f64).into(),
                 });
             }
 
             _ => (),
         }
     });
+
+    Ok(())
 }
