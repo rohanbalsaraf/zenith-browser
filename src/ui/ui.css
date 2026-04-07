@@ -192,7 +192,7 @@ body {
 
 /* ── Find in Page ────────────────────────────────────────────────────────── */
 .find-bar {
-    position: fixed; top: 94px; right: 24px; z-index: 2000;
+    position: fixed; top: 46px; right: 24px; z-index: 2000;
     background: var(--menu-bg); border: 1px solid var(--menu-border);
     border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.4);
     display: flex; align-items: center; padding: 6px 8px; gap: 4px;
@@ -272,10 +272,11 @@ body {
 /* ── Permission Bar ──────────────────────────────────────────────────────── */
 .permission-bar {
     position: fixed;
-    top: 90px;
+    top: 8px;
     left: 50%;
     transform: translateX(-50%);
-    width: 480px;
+    width: 90%;
+    max-width: 460px;
     background: var(--chrome);
     border: 1px solid var(--chrome-border);
     border-radius: 12px;

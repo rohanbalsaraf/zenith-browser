@@ -1178,6 +1178,7 @@ fn dispatch_ipc_message(
         }
         "permission_request" => {
             if let (Some(id), Some(url), Some(permission), Some(request_id)) = (tab_id, message.url, message.permission, message.request_id) {
+                println!("Permission request: {} for {} on tab {}", permission, url, id);
                 let _ = proxy.send_event(UserEvent::PermissionRequest {
                     tab_id: id,
                     url,
@@ -2255,6 +2256,7 @@ fn main() {
                 ));
             }
             Event::UserEvent(UserEvent::PermissionRequest { tab_id, url, permission, request_id }) => {
+                println!("[Zenith] Permission Request: tab {}, url {}, perm {}", tab_id, url, permission);
                 let js = format!("if (window.showPermissionPrompt) window.showPermissionPrompt({}, {}, '{}', '{}');", 
                     tab_id, 
                     serde_json::to_string(&url).unwrap(),
