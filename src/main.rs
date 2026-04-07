@@ -111,6 +111,8 @@ enum UserEvent {
         decision: String,
         request_id: String,
     },
+    GetSuggestions(String),
+    SuggestionResults(Vec<Suggestion>),
 }
 
 #[derive(Clone, Copy)]
@@ -158,7 +160,15 @@ struct IpcMessage {
     granted: Option<bool>,
     #[serde(default)]
     toast_type: Option<String>,
-    // Bridge for mixed naming conventions
+}
+
+#[derive(Serialize, Clone)]
+struct Suggestion {
+    title: String,
+    #[serde(default)]
+    url: Option<String>,
+    #[serde(rename = "type")]
+    suggestion_type: String, // "history", "bookmark", "search"
 }
 
 struct BrowserTab {
@@ -1195,6 +1205,11 @@ fn dispatch_ipc_message(
                     decision,
                     request_id,
                 });
+            }
+        }
+        "get_suggestions" => {
+            if let Some(query) = message.query {
+                let _ = proxy.send_event(UserEvent::GetSuggestions(query));
             }
         }
         "settings-change" | "settings_change" => {
@@ -2271,8 +2286,82 @@ fn main() {
                     let _ = tab.webview.evaluate_script(&js);
                 }
             }
+            Event::UserEvent(UserEvent::GetSuggestions(query)) => {
+                fetch_suggestions(query, &recent_sites, &bookmarks, proxy.clone());
+            }
+            Event::UserEvent(UserEvent::SuggestionResults(results)) => {
+                let js = format!("if (window.zenithSetSuggestions) window.zenithSetSuggestions({});", serde_json::to_string(&results).unwrap());
+                let _ = chrome_webview.evaluate_script(&js);
+            }
             _ => {}
         }
+    });
+}
+
+fn fetch_suggestions(
+    query: String,
+    recent_sites: &[RecentSite],
+    bookmarks: &[BookmarkSite],
+    proxy: EventLoopProxy<UserEvent>,
+) {
+    let query_lc = query.to_lowercase();
+    let mut results = Vec::new();
+
+    // 1. Bookmarks (High priority)
+    for b in bookmarks {
+        if b.url.to_lowercase().contains(&query_lc) || b.title.to_lowercase().contains(&query_lc) {
+            results.push(Suggestion {
+                title: b.title.clone(),
+                url: Some(b.url.clone()),
+                suggestion_type: "bookmark".to_string(),
+            });
+        }
+        if results.len() >= 4 { break; }
+    }
+
+    // 2. History
+    for s in recent_sites {
+        if results.len() >= 7 { break; }
+        if s.url.to_lowercase().contains(&query_lc) || s.title.to_lowercase().contains(&query_lc) {
+            if !results.iter().any(|r| r.url.as_ref() == Some(&s.url)) {
+                results.push(Suggestion {
+                    title: s.title.clone(),
+                    url: Some(s.url.clone()),
+                    suggestion_type: "history".to_string(),
+                });
+            }
+        }
+    }
+
+    // 3. Search suggestions (Async)
+    let search_proxy = proxy.clone();
+    let query_clone = query.clone();
+    std::thread::spawn(move || {
+        let mut final_results = results;
+        let client = reqwest::blocking::Client::new();
+        let api_url = format!("https://suggestqueries.google.com/complete/search?client=chrome&q={}", utf8_percent_encode(&query_clone, NON_ALPHANUMERIC));
+        
+        if let Ok(resp) = client.get(api_url).send() {
+            if let Ok(json_val) = resp.json::<serde_json::Value>() {
+                if let serde_json::Value::Array(root) = &json_val {
+                    if let Some(suggestions_val) = root.get(1) {
+                        if let serde_json::Value::Array(suggestions) = suggestions_val {
+                            for s in suggestions {
+                                if final_results.len() >= 10 { break; }
+                                if let serde_json::Value::String(s_str) = s {
+                                    final_results.push(Suggestion {
+                                        title: s_str.clone(),
+                                        url: None,
+                                        suggestion_type: "search".to_string(),
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let _ = search_proxy.send_event(UserEvent::SuggestionResults(final_results));
     });
 }
 

@@ -363,3 +363,86 @@ body {
     opacity: 0.9;
     transform: translateY(-1px);
 }
+
+/* ── Omnibox Suggestions ─────────────────────────────────────────────────── */
+.suggestions-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    width: 100%;
+    background: var(--chrome);
+    border: 1px solid var(--chrome-border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    z-index: 5000;
+    overflow: hidden;
+    backdrop-filter: blur(24px);
+    animation: fadeScaleIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+    padding: 4px 0;
+}
+
+[data-theme="light"] .suggestions-dropdown {
+    background: rgba(255,255,255,0.96);
+}
+
+@keyframes fadeScaleIn {
+    from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.suggestion-item {
+    display: flex;
+    align-items: center;
+    padding: 9px 12px;
+    gap: 12px;
+    cursor: pointer;
+    transition: background 0.1s;
+    user-select: none;
+}
+
+.suggestion-item.selected {
+    background: var(--btn-hover);
+}
+
+.suggestion-item:hover {
+    background: var(--btn-hover);
+}
+
+.sugg-icon {
+    width: 28px;
+    height: 28px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    background: var(--tab-bg);
+    border-radius: 7px;
+}
+
+.sugg-icon svg { width: 14px; height: 14px; }
+
+.sugg-content {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+}
+
+.sugg-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sugg-url {
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 1px;
+}

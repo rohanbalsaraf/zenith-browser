@@ -35,8 +35,9 @@
             <svg id="search-icon" class="addr-icon search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input type="text" id="url-input" placeholder="Search or enter URL" spellcheck="false" autocomplete="off" autofocus>
             <button id="bookmark-btn" class="addr-btn" title="Bookmark (⌘D)">
-                <svg id="bookmark-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                <svg id="bookmark-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></polygon></svg>
             </button>
+            <div id="suggestions-dropdown" class="suggestions-dropdown hidden"></div>
         </div>
         <button id="settings-btn" class="icon-btn" title="Menu">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
@@ -92,6 +93,11 @@ const fwdBtn    = document.getElementById('forward-btn');
 const reloadBtn = document.getElementById('reload-btn');
 const bookmarkBtn = document.getElementById('bookmark-btn');
 const bookmarkIcon = document.getElementById('bookmark-icon');
+const suggestionsDropdown = document.getElementById('suggestions-dropdown');
+
+let currentSuggestions = [];
+let selectedSuggestionIndex = -1;
+let debounceTimer = null;
 
 const HOME_URL = 'zenith://assets/home';
 const SETTINGS_URL = 'zenith://assets/settings';
@@ -307,15 +313,100 @@ function bookmarkActiveTab() {
     closeMenu();
 }
 
+function debounce(func, delay) {
+    return function(...args) {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => func.apply(this, args), delay);
+    };
+}
+
+function hideSuggestions() {
+    suggestionsDropdown.classList.add('hidden');
+    selectedSuggestionIndex = -1;
+}
+
+function renderSuggestions() {
+    if (currentSuggestions.length === 0) {
+        hideSuggestions();
+        return;
+    }
+    
+    suggestionsDropdown.innerHTML = '';
+    currentSuggestions.forEach((s, i) => {
+        const item = document.createElement('div');
+        item.className = 'suggestion-item' + (i === selectedSuggestionIndex ? ' selected' : '');
+        
+        // Pick icon
+        let icon = ICONS.shield;
+        if (s.type === 'history') icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+        if (s.type === 'bookmark') icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>';
+        if (s.type === 'search') icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
+
+        item.innerHTML = `
+            <div class="sugg-icon">${icon}</div>
+            <div class="sugg-content">
+                <span class="sugg-title">${s.title}</span>
+                ${s.url ? `<span class="sugg-url">${s.url}</span>` : ''}
+            </div>
+        `;
+        item.onclick = () => {
+            if (s.url) navigateActive(s.url);
+            else navigateActive(s.title);
+            hideSuggestions();
+        };
+        suggestionsDropdown.appendChild(item);
+    });
+    suggestionsDropdown.classList.remove('hidden');
+}
+
+window.zenithSetSuggestions = (suggestions) => {
+    currentSuggestions = suggestions || [];
+    selectedSuggestionIndex = -1;
+    renderSuggestions();
+};
+
+urlInput.oninput = debounce(() => {
+    const query = urlInput.value.trim();
+    if (query.length === 0) {
+        hideSuggestions();
+        return;
+    }
+    send({ type: 'get_suggestions', query });
+}, 150);
+
 urlInput.onkeydown = (e) => {
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        selectedSuggestionIndex = Math.min(selectedSuggestionIndex + 1, currentSuggestions.length - 1);
+        renderSuggestions();
+        return;
+    }
+    if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        selectedSuggestionIndex = Math.max(selectedSuggestionIndex - 1, -1);
+        renderSuggestions();
+        return;
+    }
+    if (e.key === 'Escape') {
+        hideSuggestions();
+        return;
+    }
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
         e.preventDefault();
         urlInput.select();
         return;
     }
     if (e.key === 'Enter') {
-        navigateActive(urlInput.value);
+        if (selectedSuggestionIndex >= 0) {
+            e.preventDefault();
+            const s = currentSuggestions[selectedSuggestionIndex];
+            if (s.url) navigateActive(s.url);
+            else navigateActive(s.title);
+        } else {
+            navigateActive(urlInput.value);
+        }
         urlInput.blur();
+        hideSuggestions();
     }
 };
 
