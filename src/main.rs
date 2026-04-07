@@ -72,6 +72,10 @@ enum UserEvent {
         success: bool,
     },
     ShowThreeDotsMenu { x: f64, y: f64 },
+    FindInPage {
+        query: String,
+        forward: bool,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -102,6 +106,10 @@ struct IpcMessage {
     x: Option<f64>,
     #[serde(default)]
     y: Option<f64>,
+    #[serde(default)]
+    query: Option<String>,
+    #[serde(default)]
+    forward: Option<bool>,
 }
 
 struct BrowserTab {
@@ -983,6 +991,12 @@ fn dispatch_ipc_message(
                 let _ = proxy.send_event(UserEvent::ShowThreeDotsMenu { x, y });
             }
         }
+        "find_in_page" => {
+            if let Some(query) = message.query {
+                let forward = message.forward.unwrap_or(true);
+                let _ = proxy.send_event(UserEvent::FindInPage { query, forward });
+            }
+        }
         _ => {}
     }
 }
@@ -1394,13 +1408,23 @@ fn main() {
                 for tab in &tabs {
                     sync_downloads_to_tab(tab, &downloads);
                 }
+                let filename = std::path::Path::new(&path).file_name().and_then(|s| s.to_str()).unwrap_or("file");
+                let msg = format!("Downloading {}", filename);
+                let _ = chrome_webview.evaluate_script(&format!("if (window.showToast) window.showToast({}, 'info');", serde_json::to_string(&msg).unwrap()));
             }
             Event::UserEvent(UserEvent::DownloadCompleted { url, path, success }) => {
-                record_download_completed(&mut downloads, &url, path, success);
+                record_download_completed(&mut downloads, &url, path.clone(), success);
                 save_downloads(&downloads_path, &downloads);
                 for tab in &tabs {
                     sync_downloads_to_tab(tab, &downloads);
                 }
+                let filename = path.as_ref().and_then(|p| std::path::Path::new(p).file_name()).and_then(|s| s.to_str()).unwrap_or("file");
+                let (msg, toast_type) = if success {
+                    (format!("Finished downloading {}", filename), "success")
+                } else {
+                    (format!("Failed to download {}", filename), "error")
+                };
+                let _ = chrome_webview.evaluate_script(&format!("if (window.showToast) window.showToast({}, '{}');", serde_json::to_string(&msg).unwrap(), toast_type));
             }
             Event::UserEvent(UserEvent::ClearHistory) => {
                 if !recent_sites.is_empty() {
@@ -1636,6 +1660,17 @@ fn main() {
                 #[cfg(target_os = "macos")]
                 unsafe {
                     dots_menu.show_context_menu_for_nsview(window.ns_view() as _, Some(tao::dpi::Position::Logical(tao::dpi::LogicalPosition::new(x, y))));
+                }
+            }
+            Event::UserEvent(UserEvent::FindInPage { query, forward }) => {
+                if let Some(tab_id) = active_tab_id {
+                    if let Some(tab) = tabs.iter().find(|t| t.id == tab_id) {
+                        // window.find(aString, aCaseSensitive, aBackwards, aWrapAround, aWholeWord, aSearchInFrames, aShowDialog)
+                        let backwards = if forward { "false" } else { "true" };
+                        let escaped = serde_json::to_string(&query).unwrap_or_else(|_| "\"\"".to_string());
+                        let js = format!("window.find({}, false, {}, true, false, false, false);", escaped, backwards);
+                        let _ = tab.webview.evaluate_script(&js);
+                    }
                 }
             }
             _ => {}
