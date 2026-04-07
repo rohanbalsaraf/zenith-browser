@@ -2,145 +2,228 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zenith UI</title>
-    <!-- Modern Typography -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <title>Zenith</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="ui.css">
 </head>
 <body>
+<div id="ui-shell">
     <div class="tabs-bar" id="tabs-bar">
-        <button id="new-tab-btn" class="icon-btn" title="New Tab">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        <button id="new-tab-btn" class="icon-btn" title="New Tab (⌘T)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
     </div>
     <div class="toolbar">
         <div class="nav-buttons">
-            <button id="back-btn" title="Back">
+            <button id="back-btn" class="nav-btn" title="Back (⌘[)" disabled>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
             </button>
-            <button id="forward-btn" title="Forward">
+            <button id="forward-btn" class="nav-btn" title="Forward (⌘])" disabled>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
             </button>
-            <button id="reload-btn" title="Reload">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+            <button id="reload-btn" class="nav-btn" title="Reload (⌘R)">
+                <svg id="icon-reload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
             </button>
         </div>
-        
-        <div class="address-bar-container">
-            <input type="text" id="url-input" placeholder="Search or enter URL" spellcheck="false" autocomplete="off">
+        <div class="address-bar-wrap" id="address-bar-wrap">
+            <svg id="search-icon" class="addr-icon search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="url-input" placeholder="Search or enter URL" spellcheck="false" autocomplete="off" autofocus>
         </div>
-
-        <button id="settings-btn" class="icon-btn" title="Settings">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        <button id="settings-btn" class="icon-btn" title="Menu">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
         </button>
-
-        <div class="status-indicator" id="status-dot"></div>
     </div>
+</div>
 
-    <div id="settings-menu" class="settings-menu hidden">
-        <div class="menu-header">Settings</div>
-        <div class="menu-item" id="new-window-btn">New Window</div>
-        <div class="menu-item" id="clear-history-btn">Clear History</div>
-        <div class="menu-divider"></div>
-        <div class="menu-item" id="about-btn">About Zenith</div>
-    </div>
+<div id="tabs-content"></div>
 
-    <script>
-        // Global error logging to Rust
-        window.onerror = function(msg, url, line) {
-            window.ipc.postMessage(JSON.stringify({ type: "debug", payload: `JS Error: ${msg} at ${line}` }));
-            return false;
-        };
+<div id="settings-menu" class="settings-menu hidden">
+    <div class="menu-section-label">Navigation</div>
+    <div class="menu-item" id="m-new-tab"><span class="menu-item-icon">＋</span>New Tab<span class="menu-kbd">⌘T</span></div>
+    <div class="menu-item" id="m-close-tab"><span class="menu-item-icon">✕</span>Close Tab<span class="menu-kbd">⌘W</span></div>
+    <div class="menu-divider"></div>
+    <div class="menu-section-label">Appearance</div>
+    <div class="menu-item" id="m-theme"><span class="menu-item-icon">◑</span><span id="theme-label">Light Mode</span></div>
+</div>
 
-        const urlInput = document.getElementById('url-input');
-        const backBtn = document.getElementById('back-btn');
-        const forwardBtn = document.getElementById('forward-btn');
-        const reloadBtn = document.getElementById('reload-btn');
-        const newTabBtn = document.getElementById('new-tab-btn');
-        const settingsBtn = document.getElementById('settings-btn');
-        const settingsMenu = document.getElementById('settings-menu');
-        const tabsBar = document.getElementById('tabs-bar');
+<script>
+const tabsBar   = document.getElementById('tabs-bar');
+const tabsCont  = document.getElementById('tabs-content');
+const urlInput  = document.getElementById('url-input');
+const newTabBtn = document.getElementById('new-tab-btn');
+const settBtn   = document.getElementById('settings-btn');
+const settMenu  = document.getElementById('settings-menu');
+const backBtn   = document.getElementById('back-btn');
+const fwdBtn    = document.getElementById('forward-btn');
+const reloadBtn = document.getElementById('reload-btn');
 
-        let tabs = [];
-        let activeTabId = null;
+let tabs     = [];
+let activeId = null;
+let nextId   = 0;
+let darkMode = localStorage.getItem('zenith-theme') !== 'light';
 
-        function sendMsg(type, payload) {
-            console.log("Sending IPC:", type, payload);
-            window.ipc.postMessage(JSON.stringify({ type, payload }));
+function fromProxyUrl(rawUrl) {
+    try {
+        const u = new URL(rawUrl);
+        if (u.protocol !== 'zenith:') return rawUrl;
+        const parts = u.hostname.split('.');
+        if (parts.length < 4 || parts[parts.length - 1] !== 'z') return rawUrl;
+        const scheme = parts[0];
+        if (scheme !== 'http' && scheme !== 'https') return rawUrl;
+        const port = parts[parts.length - 2];
+        const host = parts.slice(1, -2).join('.');
+        if (!host) return rawUrl;
+        const defaultPort = scheme === 'https' ? '443' : '80';
+        const portPart = port !== defaultPort ? `:${port}` : '';
+        return `${scheme}://${host}${portPart}${u.pathname || '/'}${u.search || ''}${u.hash || ''}`;
+    } catch (_) {
+        return rawUrl;
+    }
+}
+
+function toProxyUrl(rawUrl) {
+    try {
+        const u = new URL(rawUrl);
+        if (!['http:', 'https:'].includes(u.protocol)) return rawUrl;
+        const port = u.port || (u.protocol === 'https:' ? '443' : '80');
+        return `zenith://${u.protocol.slice(0, -1)}.${u.hostname}.${port}.z${u.pathname || '/'}${u.search || ''}${u.hash || ''}`;
+    } catch (_) {
+        return rawUrl;
+    }
+}
+
+function updateNavButtons() {
+    const hasFrame = !!document.getElementById(`frame-${activeId}`);
+    backBtn.disabled = !hasFrame;
+    fwdBtn.disabled = !hasFrame;
+}
+
+// ── Rust Router Bridges ──────────────────────────────────────────────────────
+window.zenithUpdateAddressBar = (u) => {
+    u = fromProxyUrl(u);
+    const f = document.getElementById(`frame-${activeId}`);
+    if (f) {
+        f.dataset.realUrl = u;
+        if (document.activeElement !== urlInput) {
+            urlInput.value = (u.includes('zenith://assets/home')) ? '' : u;
         }
+    }
+};
 
-        // Shortcuts
-        window.addEventListener('keydown', (e) => {
-            const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-            const cmdKey = isMac ? e.metaKey : e.ctrlKey;
-            if (cmdKey && e.key === 't') { e.preventDefault(); sendMsg('new_tab'); }
-            else if (cmdKey && e.key === 'w') { e.preventDefault(); if (activeTabId !== null) sendMsg('close_tab', activeTabId); }
-        });
+window.zenithNewTab = () => createTab();
+window.zenithNavigate = (url) => navigate(activeId, url);
 
-        urlInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                let url = urlInput.value.trim();
-                if (!url.startsWith('http://') && !url.startsWith('https://')) {
-                    url = (url.includes('.') && !url.includes(' ')) ? 'https://' + url : 'https://www.google.com/search?q=' + encodeURIComponent(url);
-                }
-                sendMsg('load_url', url);
-                urlInput.blur();
+// ── Theme ───────────────────────────────────────────────────────────────────
+function applyTheme() {
+    document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
+    document.getElementById('theme-label').textContent = darkMode ? 'Light Mode' : 'Dark Mode';
+    localStorage.setItem('zenith-theme', darkMode ? 'dark' : 'light');
+}
+applyTheme();
+
+// ── Tab Management ──────────────────────────────────────────────────────────
+function createTab(url = 'zenith://assets/home') {
+    const id = nextId++;
+    const tab = { id, title: 'New Tab', url };
+    tabs.push(tab);
+
+    const pill = document.createElement('div');
+    pill.id = `tab-${id}`;
+    pill.className = 'tab';
+    pill.innerHTML = `<span class="tab-lbl" id="lbl-${id}">New Tab</span><button class="tab-x">×</button>`;
+    pill.onclick = (e) => {
+        if (e.target.closest('.tab-x')) closeTab(id); else switchTab(id);
+    };
+    tabsBar.insertBefore(pill, newTabBtn);
+
+    const frame = document.createElement('iframe');
+    frame.id = `frame-${id}`;
+    frame.className = 'tab-frame hidden';
+    frame.src = url;
+    
+    frame.onload = () => {
+        try {
+            const title = frame.contentDocument ? frame.contentDocument.title : "Zenith";
+            const lbl = document.getElementById(`lbl-${id}`);
+            if (lbl) lbl.innerText = title || "Zenith";
+            if (id === activeId && document.activeElement !== urlInput) {
+                const realUrl = frame.dataset.realUrl || url;
+                urlInput.value = (realUrl.includes('zenith://assets/home')) ? '' : realUrl;
             }
-        });
+        } catch(e) {}
+    };
+    tabsCont.appendChild(frame);
+    switchTab(id);
+    navigate(id, url);
+}
 
-        backBtn.onclick = () => sendMsg('back');
-        forwardBtn.onclick = () => sendMsg('forward');
-        reloadBtn.onclick = () => sendMsg('reload');
-        newTabBtn.onclick = () => sendMsg('new_tab');
-        settingsBtn.onclick = (e) => { e.stopPropagation(); settingsMenu.classList.toggle('hidden'); };
+function switchTab(id) {
+    tabs.forEach(t => {
+        const f = document.getElementById(`frame-${t.id}`);
+        const p = document.getElementById(`tab-${t.id}`);
+        if (f) f.classList.toggle('hidden', t.id !== id);
+        if (p) p.classList.toggle('active', t.id === id);
+    });
+    activeId = id;
+    const tab = tabs.find(t => t.id === id);
+    if (tab && document.activeElement !== urlInput) {
+        const f = document.getElementById(`frame-${id}`);
+        const u = f.dataset.realUrl || tab.url;
+        urlInput.value = (u.includes('zenith://assets/home')) ? '' : u;
+    }
+    updateNavButtons();
+}
 
-        document.onclick = (e) => { if (!settingsMenu.contains(e.target) && e.target !== settingsBtn) settingsMenu.classList.add('hidden'); };
-        document.getElementById('new-window-btn').onclick = () => sendMsg('new_window');
+function closeTab(id) {
+    if (tabs.length <= 1) return;
+    tabs = tabs.filter(t => t.id !== id);
+    const p = document.getElementById(`tab-${id}`); if (p) p.remove();
+    const f = document.getElementById(`frame-${id}`); if (f) f.remove();
+    if (activeId === id) switchTab(tabs[0].id);
+    updateNavButtons();
+}
 
-        function createTabElement(tab) {
-            const div = document.createElement('div');
-            div.className = `tab ${tab.id === activeTabId ? 'active' : ''}`;
-            div.innerHTML = `<span class="tab-title">${tab.title || 'New Tab'}</span><button class="tab-close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>`;
-            
-            div.onclick = (e) => {
-                if (e.target.closest('.tab-close')) {
-                    sendMsg('close_tab', tab.id);
-                } else {
-                    sendMsg('switch_tab', tab.id);
-                }
-            };
-            return div;
-        }
+function navigate(id, rawUrl) {
+    let url = rawUrl.trim();
+    if (!url) return;
+    if (!url.startsWith('http') && !url.startsWith('zenith://')) {
+        url = (url.includes('.') && !url.includes(' ')) ? 'https://' + url : 'https://www.google.com/search?q=' + encodeURIComponent(url);
+    }
+    const frame = document.getElementById(`frame-${id}`);
+    if (frame) {
+        frame.dataset.realUrl = url;
+        frame.src = (url.startsWith('http') && !url.includes('zenith://')) ? toProxyUrl(url) : url;
+    }
+    updateNavButtons();
+}
 
-        function renderTabs() {
-            const newBtn = document.getElementById('new-tab-btn');
-            tabsBar.innerHTML = '';
-            tabs.forEach(tab => tabsBar.appendChild(createTabElement(tab)));
-            tabsBar.appendChild(newBtn);
-        }
+// ── Events ──────────────────────────────────────────────────────────────────
+urlInput.onkeydown = (e) => {
+    if (e.key === 'Enter') { navigate(activeId, urlInput.value); urlInput.blur(); }
+};
+urlInput.onfocus = () => setTimeout(() => urlInput.select(), 10);
 
-        // Direct functions for Rust to call
-        window.zenithUpdateTabs = (payload) => {
-            tabs = payload.tabs;
-            activeTabId = payload.active_id;
-            renderTabs();
-            const activeTab = tabs.find(t => t.id === activeTabId);
-            if (activeTab) urlInput.value = activeTab.url || '';
-        };
+newTabBtn.onclick = () => createTab();
+settBtn.onclick = (e) => { e.stopPropagation(); settMenu.classList.toggle('hidden'); };
+document.onclick = () => settMenu.classList.add('hidden');
 
-        window.zenithUpdateUrl = (url) => {
-            urlInput.value = url;
-            const activeTab = tabs.find(t => t.id === activeTabId);
-            if (activeTab) activeTab.url = url;
-        };
+document.getElementById('m-new-tab').onclick = () => createTab();
+document.getElementById('m-close-tab').onclick = () => closeTab(activeId);
+document.getElementById('m-theme').onclick = () => { darkMode = !darkMode; applyTheme(); };
 
-        window.zenithSetLoading = (loading) => {
-            const dot = document.getElementById('status-dot');
-            loading ? dot.classList.add('loading') : dot.classList.remove('loading');
-        };
-    </script>
+backBtn.onclick = () => { try { document.getElementById(`frame-${activeId}`).contentWindow.history.back(); } catch(e) {} };
+fwdBtn.onclick = () => { try { document.getElementById(`frame-${activeId}`).contentWindow.history.forward(); } catch(e) {} };
+reloadBtn.onclick = () => { const f = document.getElementById(`frame-${activeId}`); if (f) f.src = f.src; };
+
+// ── Window Listeners (from home.html) ───────────────────────────────────────
+window.addEventListener('message', e => {
+    const activeFrame = document.getElementById(`frame-${activeId}`);
+    if (!activeFrame || e.source !== activeFrame.contentWindow) return;
+    if (e.data.type === 'navigate') navigate(activeId, e.data.url);
+});
+
+// Boot
+createTab();
+</script>
 </body>
 </html>
