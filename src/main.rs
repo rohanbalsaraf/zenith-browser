@@ -1067,6 +1067,7 @@ fn build_browser_tab(
         .with_user_agent(CUSTOM_USER_AGENT)
         .with_bounds(bounds)
         .with_url(url)
+        .with_back_forward_navigation_gestures(true)
         .with_initialization_script(&init_script)
         .with_navigation_handler(move |next| {
             if next.starts_with("zenith://") {
