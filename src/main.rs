@@ -35,7 +35,7 @@ fn main() -> wry::Result<()> {
         .build(&event_loop)
         .unwrap();
 
-    let toolbar_height = 44;
+    let toolbar_height = 38;
 
     // UI Assets
     let ui_html = include_str!("ui/ui.html");
