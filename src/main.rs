@@ -1827,7 +1827,48 @@ fn main() {
                 }
             }
             Event::UserEvent(UserEvent::OpenFindBar) => {
-                let _ = chrome_webview.evaluate_script("if (window.zenithOpenFind) window.zenithOpenFind();");
+                // Inject a self-contained find bar into the active tab's webview.
+                // This is reliable because window.find() runs in the same context as the page.
+                if let Some(tab_id) = active_tab_id {
+                    if let Some(tab) = tabs.iter().find(|t| t.id == tab_id) {
+                        let find_js = r#"
+(function() {
+    if (document.getElementById('__zenith_find_bar__')) {
+        const inp = document.getElementById('__zenith_find_input__');
+        inp.focus(); inp.select(); return;
+    }
+    const bar = document.createElement('div');
+    bar.id = '__zenith_find_bar__';
+    bar.style.cssText = 'position:fixed;top:12px;right:12px;z-index:2147483647;background:rgba(30,30,40,0.96);border:1px solid rgba(100,120,255,0.35);border-radius:12px;padding:8px 10px;display:flex;align-items:center;gap:8px;box-shadow:0 8px 32px rgba(0,0,0,0.5);backdrop-filter:blur(20px);font-family:-apple-system,BlinkMacSystemFont,sans-serif;';
+    bar.innerHTML = `
+        <input id="__zenith_find_input__" placeholder="Find..." style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:6px 10px;color:#fff;font-size:13px;width:180px;outline:none;" />
+        <button id="__zenith_find_prev__" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#ccc;padding:5px 8px;cursor:pointer;font-size:14px;">↑</button>
+        <button id="__zenith_find_next__" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#ccc;padding:5px 8px;cursor:pointer;font-size:14px;">↓</button>
+        <span id="__zenith_find_count__" style="color:#aaa;font-size:11px;min-width:50px;"></span>
+        <button id="__zenith_find_close__" style="background:transparent;border:none;color:#aaa;cursor:pointer;font-size:16px;padding:0 4px;">✕</button>
+    `;
+    document.body.appendChild(bar);
+    const inp = document.getElementById('__zenith_find_input__');
+    const count = document.getElementById('__zenith_find_count__');
+    function doFind(forward) {
+        var q = inp.value;
+        if (!q) { count.textContent = ''; return; }
+        window.find(q, false, !forward, true, false, false, false);
+    }
+    inp.addEventListener('input', function() { doFind(true); });
+    inp.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { doFind(!e.shiftKey); e.preventDefault(); }
+        if (e.key === 'Escape') { bar.remove(); }
+    });
+    document.getElementById('__zenith_find_next__').onclick = function() { doFind(true); };
+    document.getElementById('__zenith_find_prev__').onclick = function() { doFind(false); };
+    document.getElementById('__zenith_find_close__').onclick = function() { bar.remove(); };
+    inp.focus();
+})();
+"#;
+                        let _ = tab.webview.evaluate_script(find_js);
+                    }
+                }
             }
             Event::UserEvent(UserEvent::MenuAction(_)) => {
                 // Already handled above before the match
