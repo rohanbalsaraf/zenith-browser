@@ -645,11 +645,15 @@ fn chrome_bounds_for_window(window: &Window) -> Rect {
     }
 }
 
-fn suggestion_bounds_for_window(window: &Window) -> Rect {
-    let size = window.inner_size().to_logical::<u32>(window.scale_factor());
+fn palette_bounds_for_window(window: &Window) -> Rect {
+    let size = window.inner_size().to_logical::<f64>(window.scale_factor());
+    let width = 640.0;
+    let height = 500.0;
+    let x = (size.width - width) / 2.0;
+    let y = 96.0;
     Rect {
-        position: LogicalPosition::new(0, 0).into(),
-        size: WryLogicalSize::new(size.width.max(1), 600.min(size.height)).into(),
+        position: LogicalPosition::new(x.max(0.0) as i32, y as i32).into(),
+        size: WryLogicalSize::new(width as u32, height as u32).into(),
     }
 }
 
@@ -1585,7 +1589,6 @@ fn main() {
     let chrome_proxy = proxy.clone();
     let chrome_protocol_html = final_ui_html.clone();
     let chrome_webview = WebViewBuilder::new_with_web_context(&mut web_context)
-        .with_transparent(true)
         .with_bounds(chrome_bounds_for_window(&window))
         .with_url("zenith://assets/ui")
         .with_navigation_handler(|url| is_assets_url(&url))
@@ -1594,6 +1597,22 @@ fn main() {
         })
         .with_ipc_handler(move |request: Request<String>| {
             dispatch_ipc_message(request.body(), &chrome_proxy, None);
+        })
+        .build_as_child(&window)
+        .unwrap();
+
+    let palette_proxy = proxy.clone();
+    let palette_protocol_html = final_ui_html.clone();
+    let palette_webview = WebViewBuilder::new_with_web_context(&mut web_context)
+        .with_transparent(true)
+        .with_visible(false)
+        .with_bounds(palette_bounds_for_window(&window))
+        .with_url("zenith://assets/ui?mode=palette")
+        .with_custom_protocol("zenith".into(), move |_id, request: Request<Vec<u8>>| {
+            handle_zenith_request(palette_protocol_html.as_str(), request)
+        })
+        .with_ipc_handler(move |request: Request<String>| {
+            dispatch_ipc_message(request.body(), &palette_proxy, None);
         })
         .build_as_child(&window)
         .unwrap();
@@ -2081,6 +2100,7 @@ fn main() {
                 }
                 WindowEvent::Resized(_size) if window_id == window.id() => {
                     let _ = chrome_webview.set_bounds(chrome_bounds_for_window(&window));
+                    let _ = palette_webview.set_bounds(palette_bounds_for_window(&window));
                     apply_tab_bounds(&tabs, content_bounds_for_window(&window));
                 }
                 _ => {}
@@ -2320,14 +2340,15 @@ fn main() {
                 fetch_suggestions(query, &recent_sites, &bookmarks, &tabs, proxy.clone());
             }
             Event::UserEvent(UserEvent::SuggestionsShown) => {
-                let _ = chrome_webview.set_bounds(suggestion_bounds_for_window(&window));
+                let _ = palette_webview.set_visible(true);
+                let _ = palette_webview.focus();
             }
             Event::UserEvent(UserEvent::SuggestionsHidden) => {
-                let _ = chrome_webview.set_bounds(chrome_bounds_for_window(&window));
+                let _ = palette_webview.set_visible(false);
             }
             Event::UserEvent(UserEvent::SuggestionResults(results)) => {
                 let js = format!("if (window.zenithSetSuggestions) window.zenithSetSuggestions({});", serde_json::to_string(&results).unwrap());
-                let _ = chrome_webview.evaluate_script(&js);
+                let _ = palette_webview.evaluate_script(&js);
             }
             _ => {}
         }

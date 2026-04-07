@@ -99,6 +99,12 @@ let currentSuggestions = [];
 let selectedSuggestionIndex = -1;
 let debounceTimer = null;
 
+const urlParams = new URLSearchParams(window.location.search);
+const isPaletteMode = urlParams.get('mode') === 'palette';
+if (isPaletteMode) {
+    document.body.classList.add('mode-palette');
+}
+
 const HOME_URL = 'zenith://assets/home';
 const SETTINGS_URL = 'zenith://assets/settings';
 const SEARCH_ENGINES = {
