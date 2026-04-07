@@ -743,11 +743,13 @@ fn tab_initialization_script(tab_id: u32) -> String {
             if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function') {{
                 var originalGUM = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
                 navigator.mediaDevices.getUserMedia = async function() {{
+                    console.log("[Zenith] Intercepted REAL getUserMedia");
                     try {{
                         var constraints = arguments[0];
                         var type = (constraints && constraints.video) ? 'camera' : 'microphone';
                         
                         var result = await requestPermission(type);
+                        console.log("[Zenith] Permission result:", result);
                         if (result === 'granted') {{
                             if (constraints.video) notifyPermission('camera', true);
                             if (constraints.audio) notifyPermission('microphone', true);
@@ -756,6 +758,7 @@ fn tab_initialization_script(tab_id: u32) -> String {
                             throw new DOMException("Permission denied by user", "NotAllowedError");
                         }}
                     }} catch (e) {{
+                        console.error("[Zenith] getUserMedia error:", e);
                         throw e;
                     }}
                 }};
@@ -803,8 +806,16 @@ fn tab_initialization_script(tab_id: u32) -> String {
             // Shim mediaDevices if missing (common in insecure contexts or unbundled apps)
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {{
                 var mockMediaDevices = {{
-                    getUserMedia: function() {{ 
-                        return Promise.reject(new DOMException("Hardware access was denied by the OS or the browser context is insecure (HTTPS required for real hardware).", "NotAllowedError")); 
+                    getUserMedia: async function() {{ 
+                        console.log("[Zenith] Intercepted MOCK getUserMedia");
+                        var constraints = arguments[0];
+                        var type = (constraints && constraints.video) ? 'camera' : 'microphone';
+                        var result = await requestPermission(type);
+                        console.log("[Zenith] Mock permission result:", result);
+                        if (result === 'granted') {{
+                             return Promise.reject(new DOMException("Zenith internal grant successful, but real hardware is blocked by OS/context. Use a secure HTTPS connection for real video.", "NotReadableError")); 
+                        }}
+                        return Promise.reject(new DOMException("Permission denied by user", "NotAllowedError")); 
                     }},
                     enumerateDevices: function() {{ 
                         return Promise.resolve([
