@@ -323,6 +323,14 @@ let pendingPermTabId = null;
 let pendingPermType = null;
 let pendingPermRequestId = null;
 
+const ICONS = {
+    camera: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
+    microphone: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`,
+    geolocation: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>`,
+    notifications: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>`,
+    shield: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`
+};
+
 function decidePermission(decision) {
     const bar = document.getElementById('permission-bar');
     bar.classList.add('hidden');
@@ -334,6 +342,18 @@ function decidePermission(decision) {
             permission: pendingPermType,
             requestId: pendingPermRequestId 
         });
+
+        // Optimistically update icons in the UI
+        if (decision === 'granted') {
+            const tab = tabs.find(t => t.id === pendingPermTabId);
+            if (tab) {
+                tab.activePermissions = tab.activePermissions || [];
+                if (!tab.activePermissions.includes(pendingPermType)) {
+                    tab.activePermissions.push(pendingPermType);
+                }
+                updateAddressBar();
+            }
+        }
     }
     pendingPermTabId = null;
     pendingPermType = null;
@@ -346,6 +366,9 @@ function showPermissionPrompt(tabId, url, type, requestId) {
     pendingPermRequestId = requestId;
     const bar = document.getElementById('permission-bar');
     const text = document.getElementById('perm-text');
+    const iconEl = document.getElementById('perm-type-icon');
+
+    iconEl.innerHTML = ICONS[type] || ICONS.shield;
     
     let label = 'access';
     if (type === 'camera') label = 'access your camera';
