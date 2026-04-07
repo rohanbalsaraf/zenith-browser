@@ -350,13 +350,14 @@ function renderSuggestions() {
     let lastSection = null;
 
     currentSuggestions.forEach((s, i) => {
+        const type = s.suggestionType || s.type;
         // Add section header if type changes
-        if (s.type !== lastSection) {
+        if (type !== lastSection) {
             const header = document.createElement('div');
             header.className = 'sugg-header';
-            header.innerText = SECTION_NAMES[s.type] || s.type;
+            header.innerText = SECTION_NAMES[type] || type;
             suggestionsDropdown.appendChild(header);
-            lastSection = s.type;
+            lastSection = type;
         }
 
         const item = document.createElement('div');
@@ -364,10 +365,10 @@ function renderSuggestions() {
         
         // Pick icon
         let icon = ICONS.shield;
-        if (s.type === 'history') icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
-        if (s.type === 'bookmark') icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>';
-        if (s.type === 'search') icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
-        if (s.type === 'tab') icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>';
+        if (type === 'history') icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+        if (type === 'bookmark') icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>';
+        if (type === 'search') icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
+        if (type === 'tab') icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>';
 
         item.innerHTML = `
             <div class="sugg-icon">${icon}</div>

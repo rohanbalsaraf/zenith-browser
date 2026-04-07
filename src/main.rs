@@ -1605,6 +1605,7 @@ fn main() {
     let palette_protocol_html = final_ui_html.clone();
     let palette_webview = WebViewBuilder::new_with_web_context(&mut web_context)
         .with_transparent(true)
+        .with_background_color((28, 29, 34, 0))
         .with_visible(false)
         .with_bounds(palette_bounds_for_window(&window))
         .with_url("zenith://assets/ui?mode=palette")
