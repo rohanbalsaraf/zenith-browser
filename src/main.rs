@@ -1634,8 +1634,8 @@ fn main() {
             },
             Event::UserEvent(UserEvent::ShowThreeDotsMenu { x, y }) => {
                 #[cfg(target_os = "macos")]
-                {
-                    dots_menu.show_context_menu_for_nsview(window.ns_view() as _, Some(tao::dpi::LogicalPosition::new(x, y)));
+                unsafe {
+                    dots_menu.show_context_menu_for_nsview(window.ns_view() as _, Some(tao::dpi::Position::Logical(tao::dpi::LogicalPosition::new(x, y))));
                 }
             }
             _ => {}
