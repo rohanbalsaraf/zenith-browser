@@ -2,8 +2,7 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 /* ── Design tokens ───────────────────────────────────────────────────────── */
-:root {
-    /* Dark (default) */
+:root, [data-theme="dark"], [data-theme="zenith-dark"] {
     --chrome:        #1c1d22;
     --chrome-border: rgba(255,255,255,0.07);
     --tab-bg:        rgba(255,255,255,0.04);
@@ -16,14 +15,10 @@
     --accent:        #4b8dff;
     --accent-glow:   rgba(75,141,255,0.2);
     --green:         #4ade80;
-    --amber:         #fb923c;
-    --menu-bg:       #2a2c33;
-    --menu-border:   rgba(255,255,255,0.09);
-    --menu-hover:    rgba(255,255,255,0.06);
     --shadow:        0 12px 40px rgba(0,0,0,0.5);
 }
 
-[data-theme="light"] {
+[data-theme="light"], [data-theme="zenith-light"] {
     --chrome:        #f4f5f8;
     --chrome-border: rgba(0,0,0,0.08);
     --tab-bg:        rgba(0,0,0,0.04);
@@ -36,11 +31,71 @@
     --accent:        #2f6df7;
     --accent-glow:   rgba(47,109,247,0.16);
     --green:         #16a34a;
-    --amber:         #d97706;
-    --menu-bg:       #ffffff;
-    --menu-border:   rgba(0,0,0,0.08);
-    --menu-hover:    rgba(0,0,0,0.04);
     --shadow:        0 12px 40px rgba(0,0,0,0.12);
+}
+
+[data-theme="catppuccin-mocha"] {
+    --chrome:        #1e1e2e;
+    --chrome-border: #313244;
+    --tab-bg:        #181825;
+    --tab-active-bg: #313244;
+    --input-bg:      #11111b;
+    --input-border:  #45475a;
+    --text-primary:  #cdd6f4;
+    --text-muted:    #bac2de;
+    --btn-hover:     rgba(205, 214, 244, 0.1);
+    --accent:        #89b4fa;
+    --accent-glow:   rgba(137, 180, 250, 0.2);
+    --green:         #a6e3a1;
+    --shadow:        0 12px 40px rgba(0,0,0,0.6);
+}
+
+[data-theme="gruvbox-dark"] {
+    --chrome:        #282828;
+    --chrome-border: #3c3836;
+    --tab-bg:        #1d2021;
+    --tab-active-bg: #3c3836;
+    --input-bg:      #32302f;
+    --input-border:  #504945;
+    --text-primary:  #ebdbb2;
+    --text-muted:    #a89984;
+    --btn-hover:     rgba(235, 219, 178, 0.1);
+    --accent:        #fabd2f;
+    --accent-glow:   rgba(250, 189, 47, 0.2);
+    --green:         #b8bb26;
+    --shadow:        0 12px 40px rgba(0,0,0,0.6);
+}
+
+[data-theme="github-dark"] {
+    --chrome:        #0d1117;
+    --chrome-border: #30363d;
+    --tab-bg:        #010409;
+    --tab-active-bg: #161b22;
+    --input-bg:      #0d1117;
+    --input-border:  #30363d;
+    --text-primary:  #c9d1d9;
+    --text-muted:    #8b949e;
+    --btn-hover:     rgba(201, 209, 217, 0.1);
+    --accent:        #58a6ff;
+    --accent-glow:   rgba(88, 166, 255, 0.2);
+    --green:         #3fb950;
+    --shadow:        0 12px 40px rgba(0,0,0,0.6);
+}
+
+[data-theme="github-light"] {
+    --chrome:        #ffffff;
+    --chrome-border: #d0d7de;
+    --tab-bg:        #f6f8fa;
+    --tab-active-bg: #ffffff;
+    --input-bg:      #ffffff;
+    --input-border:  #d0d7de;
+    --text-primary:  #24292f;
+    --text-muted:    #57606a;
+    --btn-hover:     rgba(36, 41, 47, 0.05);
+    --accent:        #0969da;
+    --accent-glow:   rgba(9, 105, 218, 0.15);
+    --green:         #1a7f37;
+    --shadow:        0 12px 40px rgba(0,0,0,0.08);
 }
 
 /* ── Layout ──────────────────────────────────────────────────────────────── */

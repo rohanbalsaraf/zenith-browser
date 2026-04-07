@@ -2056,11 +2056,7 @@ fn main() {
                 let mut next_theme: Option<&str> = None;
                 let normalized = match key.as_str() {
                     "theme" => {
-                        let v = if value.eq_ignore_ascii_case("light") {
-                            "light"
-                        } else {
-                            "dark"
-                        };
+                        let v = value.as_str();
                         next_theme = Some(v);
                         Some(("theme", v))
                     }

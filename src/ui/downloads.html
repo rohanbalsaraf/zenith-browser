@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
-        :root {
+        :root, [data-theme="dark"], [data-theme="zenith-dark"] {
             --bg: #0f1117;
             --panel: rgba(255,255,255,0.04);
             --panel-border: rgba(255,255,255,0.08);
@@ -20,7 +20,7 @@
             --fail: #ef4444;
         }
 
-        [data-theme="light"] {
+        [data-theme="light"], [data-theme="zenith-light"] {
             --bg: #f4f6fb;
             --panel: rgba(255,255,255,0.84);
             --panel-border: rgba(15,23,42,0.12);
@@ -31,6 +31,58 @@
             --ok: #10b981;
             --warn: #d97706;
             --fail: #dc2626;
+        }
+
+        [data-theme="catppuccin-mocha"] {
+            --bg: #1e1e2e;
+            --panel: #181825;
+            --panel-border: #313244;
+            --text: #cdd6f4;
+            --muted: #bac2de;
+            --accent-soft: rgba(137, 180, 250, 0.15);
+            --hover: rgba(205, 214, 244, 0.1);
+            --ok: #a6e3a1;
+            --warn: #f9e2af;
+            --fail: #f38ba8;
+        }
+
+        [data-theme="gruvbox-dark"] {
+            --bg: #282828;
+            --panel: #1d2021;
+            --panel-border: #3c3836;
+            --text: #ebdbb2;
+            --muted: #a89984;
+            --accent-soft: rgba(250, 189, 47, 0.15);
+            --hover: rgba(235, 219, 178, 0.1);
+            --ok: #b8bb26;
+            --warn: #fabd2f;
+            --fail: #fb4934;
+        }
+
+        [data-theme="github-dark"] {
+            --bg: #0d1117;
+            --panel: #161b22;
+            --panel-border: #30363d;
+            --text: #c9d1d9;
+            --muted: #8b949e;
+            --accent-soft: rgba(88, 166, 255, 0.15);
+            --hover: rgba(201, 209, 217, 0.1);
+            --ok: #3fb950;
+            --warn: #d29922;
+            --fail: #f85149;
+        }
+
+        [data-theme="github-light"] {
+            --bg: #ffffff;
+            --panel: #f6f8fa;
+            --panel-border: #d0d7de;
+            --text: #24292f;
+            --muted: #57606a;
+            --accent-soft: rgba(9, 105, 218, 0.1);
+            --hover: rgba(36, 41, 47, 0.05);
+            --ok: #1a7f37;
+            --warn: #9a6700;
+            --fail: #cf222e;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -174,16 +226,11 @@
 let entries = [];
 
 function applyTheme(theme) {
-    const normalized = theme === 'light' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', normalized);
+    document.documentElement.setAttribute('data-theme', theme);
 }
 
 function initialTheme() {
-    const saved = localStorage.getItem('zenith-theme');
-    if (saved === 'light' || saved === 'dark') return saved;
-    return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
-        ? 'dark'
-        : 'light';
+    return localStorage.getItem('zenith-theme') || 'zenith-dark';
 }
 
 function send(payload) {

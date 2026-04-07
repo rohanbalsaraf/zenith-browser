@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
-        :root {
+        :root, [data-theme="dark"], [data-theme="zenith-dark"] {
             --bg:       #0d0d11;
             --card:     rgba(255,255,255,0.04);
             --border:   rgba(255,255,255,0.08);
@@ -18,7 +18,7 @@
             --focus-ring: rgba(75,141,255,0.16);
             --focus-shadow: 0 14px 40px rgba(0,0,0,0.3);
         }
-        [data-theme="light"] {
+        [data-theme="light"], [data-theme="zenith-light"] {
             --bg:       #f6f7fb;
             --card:     rgba(255,255,255,0.8);
             --border:   rgba(15,23,42,0.12);
@@ -28,6 +28,50 @@
             --hover-bg: rgba(47,109,247,0.09);
             --focus-ring: rgba(47,109,247,0.15);
             --focus-shadow: 0 12px 30px rgba(12,18,38,0.1);
+        }
+        [data-theme="catppuccin-mocha"] {
+            --bg:       #1e1e2e;
+            --card:     #181825;
+            --border:   #313244;
+            --accent:   #89b4fa;
+            --text:     #cdd6f4;
+            --muted:    #bac2de;
+            --hover-bg: #313244;
+            --focus-ring: rgba(137, 180, 250, 0.2);
+            --focus-shadow: 0 14px 40px rgba(0,0,0,0.5);
+        }
+        [data-theme="gruvbox-dark"] {
+            --bg:       #282828;
+            --card:     #1d2021;
+            --border:   #3c3836;
+            --accent:   #fabd2f;
+            --text:     #ebdbb2;
+            --muted:    #a89984;
+            --hover-bg: #3c3836;
+            --focus-ring: rgba(250, 189, 47, 0.2);
+            --focus-shadow: 0 14px 40px rgba(0,0,0,0.5);
+        }
+        [data-theme="github-dark"] {
+            --bg:       #0d1117;
+            --card:     #161b22;
+            --border:   #30363d;
+            --accent:   #58a6ff;
+            --text:     #c9d1d9;
+            --muted:    #8b949e;
+            --hover-bg: #21262d;
+            --focus-ring: rgba(88, 166, 255, 0.2);
+            --focus-shadow: 0 14px 40px rgba(0,0,0,0.5);
+        }
+        [data-theme="github-light"] {
+            --bg:       #ffffff;
+            --card:     #f6f8fa;
+            --border:   #d0d7de;
+            --accent:   #0969da;
+            --text:     #24292f;
+            --muted:    #57606a;
+            --hover-bg: #f3f4f6;
+            --focus-ring: rgba(9, 105, 218, 0.1);
+            --focus-shadow: 0 12px 30px rgba(0,0,0,0.05);
         }
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         html, body {
@@ -188,14 +232,10 @@ tick(); setInterval(tick, 1000);
 
 // ── Theme ─────────────────────────────────────────────────────────────────────
 function applyTheme(theme) {
-    const mode = (theme === 'light') ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', mode);
+    document.documentElement.setAttribute('data-theme', theme);
 }
-const savedTheme = localStorage.getItem('zenith-theme');
-const systemTheme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
-    ? 'dark'
-    : 'light';
-applyTheme(savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : systemTheme);
+const savedTheme = localStorage.getItem('zenith-theme') || 'zenith-dark';
+applyTheme(savedTheme);
 
 function sendToHost(payload) {
     const message = { ...payload };

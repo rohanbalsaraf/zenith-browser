@@ -136,7 +136,7 @@ function isSettingsUrl(url) {
 }
 
 function isHomeUrl(url) {
-    return typeof url === 'string' && url.startsWith(HOME_URL);
+    return typeof url === 'string' && (url === HOME_URL || url.startsWith(HOME_URL));
 }
 
 function titleFromUrl(url) {
@@ -176,18 +176,20 @@ function normalizeInput(raw) {
     return searchUrlFor(value);
 }
 
+let currentTheme = localStorage.getItem('zenith-theme') || 'zenith-dark';
+
 function themeName() {
-    return darkMode ? 'dark' : 'light';
+    return currentTheme;
 }
 
 function applyTheme() {
-    document.documentElement.setAttribute('data-theme', themeName());
-    localStorage.setItem('zenith-theme', themeName());
+    document.documentElement.setAttribute('data-theme', currentTheme);
+    localStorage.setItem('zenith-theme', currentTheme);
 }
 
 function zenithApplySetting(key, value) {
     if (key === 'theme') {
-        darkMode = value !== 'light';
+        currentTheme = value;
         applyTheme();
         return;
     }
