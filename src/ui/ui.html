@@ -330,6 +330,7 @@ const SECTION_NAMES = {
 function hideSuggestions() {
     suggestionsDropdown.classList.add('hidden');
     selectedSuggestionIndex = -1;
+    send({ type: 'suggestions_hidden' });
 }
 
 function renderSuggestions() {
@@ -338,6 +339,7 @@ function renderSuggestions() {
         return;
     }
     
+    send({ type: 'suggestions_shown' });
     suggestionsDropdown.innerHTML = '';
     let lastSection = null;
 

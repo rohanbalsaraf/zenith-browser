@@ -228,6 +228,16 @@ function searchUrlFor(query) {
     return fn(query);
 }
 
+document.getElementById('search-input').addEventListener('input', e => {
+    const q = e.target.value.trim();
+    if (q) {
+        // Trigger the premium Command Palette in the shell
+        sendToHost({ type: 'get_suggestions', query: q });
+    } else {
+        sendToHost({ type: 'hide_suggestions' });
+    }
+});
+
 document.getElementById('search-input').addEventListener('keydown', e => {
     if (e.key !== 'Enter') return;
     const q = e.target.value.trim();
@@ -236,6 +246,8 @@ document.getElementById('search-input').addEventListener('keydown', e => {
         ? (q.startsWith('http') ? q : 'https://' + q)
         : searchUrlFor(q);
     go(url);
+    // Ensure suggestions hide on navigation
+    sendToHost({ type: 'hide_suggestions' });
 });
 
 // ── Shortcuts ─────────────────────────────────────────────────────────────────

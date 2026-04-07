@@ -113,6 +113,8 @@ enum UserEvent {
     },
     GetSuggestions(String),
     SuggestionResults(Vec<Suggestion>),
+    SuggestionsShown,
+    SuggestionsHidden,
 }
 
 #[derive(Clone, Copy)]
@@ -636,6 +638,14 @@ fn should_warmup_youtube_account_sync(raw_url: &str) -> bool {
 }
 
 fn chrome_bounds_for_window(window: &Window) -> Rect {
+    let size = window.inner_size().to_logical::<u32>(window.scale_factor());
+    Rect {
+        position: LogicalPosition::new(0, 0).into(),
+        size: WryLogicalSize::new(size.width.max(1), CHROME_HEIGHT).into(),
+    }
+}
+
+fn full_bounds_for_window(window: &Window) -> Rect {
     let size = window.inner_size().to_logical::<u32>(window.scale_factor());
     Rect {
         position: LogicalPosition::new(0, 0).into(),
@@ -1210,9 +1220,18 @@ fn dispatch_ipc_message(
             }
         }
         "get_suggestions" => {
-            if let Some(query) = message.query {
-                let _ = proxy.send_event(UserEvent::GetSuggestions(query));
+            if let Some(q) = message.query {
+                let _ = proxy.send_event(UserEvent::GetSuggestions(q));
             }
+        }
+        "hide_suggestions" => {
+            let _ = proxy.send_event(UserEvent::GetSuggestions("".to_string()));
+        }
+        "suggestions_shown" => {
+            let _ = proxy.send_event(UserEvent::SuggestionsShown);
+        }
+        "suggestions_hidden" => {
+            let _ = proxy.send_event(UserEvent::SuggestionsHidden);
         }
         "settings-change" | "settings_change" => {
             if let (Some(key), Some(value)) = (message.key, message.value) {
@@ -2300,6 +2319,12 @@ fn main() {
             }
             Event::UserEvent(UserEvent::GetSuggestions(query)) => {
                 fetch_suggestions(query, &recent_sites, &bookmarks, &tabs, proxy.clone());
+            }
+            Event::UserEvent(UserEvent::SuggestionsShown) => {
+                let _ = chrome_webview.set_bounds(full_bounds_for_window(&window));
+            }
+            Event::UserEvent(UserEvent::SuggestionsHidden) => {
+                let _ = chrome_webview.set_bounds(chrome_bounds_for_window(&window));
             }
             Event::UserEvent(UserEvent::SuggestionResults(results)) => {
                 let js = format!("if (window.zenithSetSuggestions) window.zenithSetSuggestions({});", serde_json::to_string(&results).unwrap());
