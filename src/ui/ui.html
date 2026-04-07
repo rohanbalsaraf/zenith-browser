@@ -12,7 +12,6 @@
 </head>
 <body>
     <div class="tabs-bar" id="tabs-bar">
-        <!-- Tabs will be injected here -->
         <button id="new-tab-btn" class="icon-btn" title="New Tab">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
         </button>
@@ -41,7 +40,6 @@
         <div class="status-indicator" id="status-dot"></div>
     </div>
 
-    <!-- Settings Menu Popover -->
     <div id="settings-menu" class="settings-menu hidden">
         <div class="menu-header">Settings</div>
         <div class="menu-item" id="new-window-btn">New Window</div>
@@ -51,6 +49,12 @@
     </div>
 
     <script>
+        // Global error logging to Rust
+        window.onerror = function(msg, url, line) {
+            window.ipc.postMessage(JSON.stringify({ type: "debug", payload: `JS Error: ${msg} at ${line}` }));
+            return false;
+        };
+
         const urlInput = document.getElementById('url-input');
         const backBtn = document.getElementById('back-btn');
         const forwardBtn = document.getElementById('forward-btn');
@@ -64,129 +68,79 @@
         let activeTabId = null;
 
         function sendMsg(type, payload) {
+            console.log("Sending IPC:", type, payload);
             window.ipc.postMessage(JSON.stringify({ type, payload }));
         }
 
-        // Keyboard Shortcuts
+        // Shortcuts
         window.addEventListener('keydown', (e) => {
             const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
             const cmdKey = isMac ? e.metaKey : e.ctrlKey;
-            
-            if (cmdKey && e.key === 't') {
-                e.preventDefault();
-                sendMsg('new_tab');
-            } else if (cmdKey && e.key === 'w') {
-                e.preventDefault();
-                if (activeTabId !== null) sendMsg('close_tab', activeTabId);
-            }
+            if (cmdKey && e.key === 't') { e.preventDefault(); sendMsg('new_tab'); }
+            else if (cmdKey && e.key === 'w') { e.preventDefault(); if (activeTabId !== null) sendMsg('close_tab', activeTabId); }
         });
 
         urlInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 let url = urlInput.value.trim();
                 if (!url.startsWith('http://') && !url.startsWith('https://')) {
-                    if (url.includes('.') && !url.includes(' ')) {
-                        url = 'https://' + url;
-                    } else {
-                        url = 'https://www.google.com/search?q=' + encodeURIComponent(url);
-                    }
+                    url = (url.includes('.') && !url.includes(' ')) ? 'https://' + url : 'https://www.google.com/search?q=' + encodeURIComponent(url);
                 }
                 sendMsg('load_url', url);
                 urlInput.blur();
             }
         });
 
-        backBtn.addEventListener('click', () => sendMsg('back'));
-        forwardBtn.addEventListener('click', () => sendMsg('forward'));
-        reloadBtn.addEventListener('click', () => sendMsg('reload'));
-        newTabBtn.addEventListener('click', () => sendMsg('new_tab'));
+        backBtn.onclick = () => sendMsg('back');
+        forwardBtn.onclick = () => sendMsg('forward');
+        reloadBtn.onclick = () => sendMsg('reload');
+        newTabBtn.onclick = () => sendMsg('new_tab');
+        settingsBtn.onclick = (e) => { e.stopPropagation(); settingsMenu.classList.toggle('hidden'); };
 
-        settingsBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            settingsMenu.classList.toggle('hidden');
-        });
-
-        document.addEventListener('click', (e) => {
-            if (!settingsMenu.contains(e.target) && e.target !== settingsBtn) {
-                settingsMenu.classList.add('hidden');
-            }
-        });
-
-        document.getElementById('new-window-btn').addEventListener('click', () => sendMsg('new_window'));
-        document.getElementById('clear-history-btn').addEventListener('click', () => {
-            alert("History cleared!"); // Placeholder
-            settingsMenu.classList.add('hidden');
-        });
-        document.getElementById('about-btn').addEventListener('click', () => {
-            alert("Zenith Browser v0.1.0\nModern. Minimal. Rapid.");
-            settingsMenu.classList.add('hidden');
-        });
+        document.onclick = (e) => { if (!settingsMenu.contains(e.target) && e.target !== settingsBtn) settingsMenu.classList.add('hidden'); };
+        document.getElementById('new-window-btn').onclick = () => sendMsg('new_window');
 
         function createTabElement(tab) {
             const div = document.createElement('div');
             div.className = `tab ${tab.id === activeTabId ? 'active' : ''}`;
-            div.id = `tab-${tab.id}`;
+            div.innerHTML = `<span class="tab-title">${tab.title || 'New Tab'}</span><button class="tab-close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>`;
             
-            const title = document.createElement('span');
-            title.className = 'tab-title';
-            title.innerText = tab.title || 'New Tab';
-            
-            const closeBtn = document.createElement('button');
-            closeBtn.className = 'tab-close';
-            closeBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
-            
-            div.addEventListener('click', (e) => {
-                if (e.target.closest('.tab-close')) return;
-                sendMsg('switch_tab', tab.id);
-            });
-            
-            closeBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                sendMsg('close_tab', tab.id);
-            });
-            
-            div.appendChild(title);
-            div.appendChild(closeBtn);
+            div.onclick = (e) => {
+                if (e.target.closest('.tab-close')) {
+                    sendMsg('close_tab', tab.id);
+                } else {
+                    sendMsg('switch_tab', tab.id);
+                }
+            };
             return div;
         }
 
         function renderTabs() {
-            // Keep the new tab button
             const newBtn = document.getElementById('new-tab-btn');
             tabsBar.innerHTML = '';
-            
-            tabs.forEach(tab => {
-                tabsBar.appendChild(createTabElement(tab));
-            });
-            
+            tabs.forEach(tab => tabsBar.appendChild(createTabElement(tab)));
             tabsBar.appendChild(newBtn);
         }
 
-        // Listen for updates from Rust
-        window.addEventListener('message', (event) => {
-            try {
-                const msg = JSON.parse(event.data);
-                if (msg.type === 'update_url') {
-                    urlInput.value = msg.payload;
-                    const activeTab = tabs.find(t => t.id === activeTabId);
-                    if (activeTab) activeTab.url = msg.payload;
-                } else if (msg.type === 'update_tabs') {
-                    tabs = msg.payload.tabs;
-                    activeTabId = msg.payload.active_id;
-                    renderTabs();
-                    
-                    // Update URL bar for active tab
-                    const activeTab = tabs.find(t => t.id === activeTabId);
-                    if (activeTab) urlInput.value = activeTab.url || '';
-                } else if (msg.type === 'loading') {
-                    document.getElementById('status-dot').classList.add('loading');
-                } else if (msg.type === 'done') {
-                    document.getElementById('status-dot').classList.remove('loading');
-                }
-            } catch (e) {
-                console.error("Failed to parse message from Rust:", e);
-            }
-        });
+        // Direct functions for Rust to call
+        window.zenithUpdateTabs = (payload) => {
+            tabs = payload.tabs;
+            activeTabId = payload.active_id;
+            renderTabs();
+            const activeTab = tabs.find(t => t.id === activeTabId);
+            if (activeTab) urlInput.value = activeTab.url || '';
+        };
+
+        window.zenithUpdateUrl = (url) => {
+            urlInput.value = url;
+            const activeTab = tabs.find(t => t.id === activeTabId);
+            if (activeTab) activeTab.url = url;
+        };
+
+        window.zenithSetLoading = (loading) => {
+            const dot = document.getElementById('status-dot');
+            loading ? dot.classList.add('loading') : dot.classList.remove('loading');
+        };
     </script>
 </body>
 </html>
