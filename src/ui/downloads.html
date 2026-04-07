@@ -2,6 +2,14 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <script>
+        (function() {
+            const theme = localStorage.getItem('zenith-theme') || 'zenith-dark';
+            document.documentElement.setAttribute('data-theme', theme);
+            const isLight = theme.includes('light');
+            document.documentElement.style.colorScheme = isLight ? 'light' : 'dark';
+        })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Downloads</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">

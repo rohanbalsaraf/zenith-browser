@@ -2,6 +2,14 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <script>
+        (function() {
+            const theme = localStorage.getItem('zenith-theme') || 'zenith-dark';
+            document.documentElement.setAttribute('data-theme', theme);
+            const isLight = theme.includes('light');
+            document.documentElement.style.colorScheme = isLight ? 'light' : 'dark';
+        })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Settings</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -148,6 +156,8 @@
             border-color: var(--panel-border);
             color: var(--text);
         }
+
+        .no-transitions * { transition: none !important; }
 
         .content {
             padding: 22px;
@@ -465,12 +475,20 @@ function send(payload) {
 }
 
 function applyTheme(theme) {
+    document.documentElement.classList.add('no-transitions');
     state.theme = theme;
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('zenith-theme', theme);
 
     document.querySelectorAll('[data-theme-opt]').forEach(card => {
         card.classList.toggle('active', card.dataset.themeOpt === theme);
+    });
+
+    // Force reflow and remove damping
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            document.documentElement.classList.remove('no-transitions');
+        });
     });
 }
 

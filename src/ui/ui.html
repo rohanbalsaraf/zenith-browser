@@ -2,7 +2,14 @@
 <html lang="en" style="background: #1c1d22 !important;">
 <head>
     <meta charset="UTF-8">
-    <meta name="color-scheme" content="dark">
+    <script>
+        (function() {
+            const theme = localStorage.getItem('zenith-theme') || 'zenith-dark';
+            document.documentElement.setAttribute('data-theme', theme);
+            const isLight = theme.includes('light');
+            document.documentElement.style.colorScheme = isLight ? 'light' : 'dark';
+        })();
+    </script>
     <title>Zenith</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="ui.css">

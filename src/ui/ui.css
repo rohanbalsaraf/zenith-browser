@@ -1,5 +1,6 @@
 /* ── Base reset ──────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+.no-transitions * { transition: none !important; }
 
 /* ── Design tokens ───────────────────────────────────────────────────────── */
 :root, [data-theme="dark"], [data-theme="zenith-dark"] {
