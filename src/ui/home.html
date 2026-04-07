@@ -40,8 +40,7 @@
 
         /* Clock */
         .clock-wrap {
-            position: absolute; top: 28px; left: 50%; transform: translateX(-50%);
-            text-align: center; pointer-events: none;
+            text-align: center; pointer-events: none; margin-bottom: 24px;
         }
         .clock-time { font-size: 3rem; font-weight: 300; letter-spacing: -2px; color: var(--text); opacity: 0.9; }
         .clock-date { font-size: 0.85rem; color: var(--muted); margin-top: 2px; }
@@ -115,12 +114,13 @@
 </head>
 <body>
 
-<div class="clock-wrap">
-    <div class="clock-time" id="clock-time">00:00</div>
-    <div class="clock-date" id="clock-date"></div>
-</div>
+
 
 <div class="container">
+    <div class="clock-wrap">
+        <div class="clock-time" id="clock-time">00:00</div>
+        <div class="clock-date" id="clock-date"></div>
+    </div>
     <div class="logo">Zenith</div>
 
     <div class="search-box">
