@@ -749,7 +749,12 @@ fn tab_initialization_script(tab_id: u32) -> String {
                     getUserMedia: function() {{ 
                         return Promise.reject(new DOMException("Hardware access was denied by the OS or the browser context is insecure (HTTPS required for real hardware).", "NotAllowedError")); 
                     }},
-                    enumerateDevices: function() {{ return Promise.resolve([]); }},
+                    enumerateDevices: function() {{ 
+                        return Promise.resolve([
+                            {{ deviceId: 'zenith-vcam', kind: 'videoinput', label: 'Zenith Camera (Permission Required)', groupId: 'zenith-media' }},
+                            {{ deviceId: 'zenith-vmic', kind: 'audioinput', label: 'Zenith Microphone (Permission Required)', groupId: 'zenith-media' }}
+                        ]); 
+                    }},
                     addEventListener: function() {{}},
                     removeEventListener: function() {{}},
                     dispatchEvent: function() {{ return false; }},
@@ -1168,14 +1173,15 @@ fn build_browser_tab(
     let ipc_proxy = proxy.clone();
     let download_start_proxy = proxy.clone();
     let download_complete_proxy = proxy.clone();
-    let perm_proxy = proxy.clone();
+    let _perm_proxy = proxy.clone();
     let protocol_html = ui_html;
     let init_script = tab_initialization_script(tab_id);
 
-    let mut webview_builder = WebViewBuilder::new_with_web_context(web_context)
+    let webview_builder = WebViewBuilder::new_with_web_context(web_context)
         .with_user_agent(CUSTOM_USER_AGENT)
         .with_bounds(bounds)
         .with_url(url)
+        .with_back_forward_navigation_gestures(true)
         .with_initialization_script(&init_script)
         .with_navigation_handler(move |next: String| {
             if next.starts_with("zenith://") {
