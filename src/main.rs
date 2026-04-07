@@ -1218,14 +1218,13 @@ fn main() {
             }
             Event::UserEvent(UserEvent::CloseTab(tab_id)) => {
                 if let Some(close_id) = tab_id.or(active_tab_id) {
-                    if tabs.len() <= 1 {
-                        if let Some(tab) = tabs.first_mut() {
-                            tab.url = HOME_URL.to_string();
-                            tab.title = fallback_title_for_url(HOME_URL);
-                            let _ = tab.webview.load_url(HOME_URL);
-                            active_tab_id = Some(tab.id);
+                    if let Some(idx) = tabs.iter().position(|t| t.id == close_id) {
+                        if tabs.len() <= 1 {
+                            // User requested that the application closes when the last tab is closed
+                            *control_flow = ControlFlow::Exit;
+                            return;
                         }
-                    } else if let Some(idx) = tabs.iter().position(|t| t.id == close_id) {
+
                         tabs.remove(idx);
                         if active_tab_id == Some(close_id) {
                             let next_idx = idx.saturating_sub(1);
