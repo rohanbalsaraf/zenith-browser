@@ -82,10 +82,18 @@ enum UserEvent {
         url: String,
         filename: String,
     },
+    OpenImageInTab(String),
     ShowToast {
         message: String,
         toast_type: String,
     },
+    ImageContextMenu {
+        url: String,
+        filename: String,
+        x: f64,
+        y: f64,
+    },
+    DownloadHistoryUpdate,
 }
 
 #[derive(Clone, Copy)]
@@ -808,17 +816,14 @@ fn tab_initialization_script(tab_id: u32) -> String {
 
             // Right-click context menu for images
             document.addEventListener('contextmenu', function(e) {{
-                var img = e.target;
-                if (!img) return;
-                // walk up to find an img/video element
-                var el = img.closest('img, [style*="background-image"]');
-                if (!el && img.tagName !== 'IMG') return;
+                var el = e.target ? e.target.closest('img') : null;
+                if (!el) return;
                 e.preventDefault();
-                var src = el ? (el.src || el.currentSrc || '') : '';
+                var src = el.src || el.currentSrc || el.getAttribute('src') || '';
                 if (!src) return;
                 var filename = src.split('/').pop().split('?')[0] || 'image.jpg';
                 if (!filename.includes('.')) filename += '.jpg';
-                send({{ type: 'save_image', url: src, filename: filename }});
+                send({{ type: 'image_context_menu', url: src, filename: filename, x: e.screenX, y: e.screenY }});
             }});
         }})();
         "#
@@ -1027,6 +1032,13 @@ fn dispatch_ipc_message(
         "save_image" => {
             if let (Some(url), Some(filename)) = (message.url, message.filename) {
                 let _ = proxy.send_event(UserEvent::SaveImage { url, filename });
+            }
+        }
+        "image_context_menu" => {
+            if let (Some(url), Some(filename)) = (message.url.clone(), message.filename.clone()) {
+                let x = message.x.unwrap_or(0.0);
+                let y = message.y.unwrap_or(0.0);
+                let _ = proxy.send_event(UserEvent::ImageContextMenu { url, filename, x, y });
             }
         }
         _ => {}
@@ -1299,6 +1311,16 @@ fn main() {
         &m_close_tab,
     ]).unwrap();
 
+    // Image right-click context menu
+    let img_menu = Menu::new();
+    let img_save = MenuItem::new("Save Image to Downloads", true, None);
+    let img_open = MenuItem::new("Open Image in New Tab", true, None);
+    img_menu.append_items(&[&img_save, &img_open]).unwrap();
+
+    // Shared mutable state for the active image context
+    use std::sync::{Arc as SArc, Mutex};
+    let img_ctx: SArc<Mutex<Option<(String, String)>>> = SArc::new(Mutex::new(None));
+
     if let Some(initial_tab) = build_browser_tab(
         &window,
         &mut web_context,
@@ -1338,6 +1360,18 @@ fn main() {
                 let _ = proxy.send_event(UserEvent::SettingsChanged { key: "theme".to_string(), value: next.to_string() });
             } else if *menu_id == m_settings.id() {
                 let _ = proxy.send_event(UserEvent::OpenSettingsTab);
+            } else if *menu_id == img_save.id() {
+                if let Ok(guard) = img_ctx.lock() {
+                    if let Some((url, filename)) = guard.clone() {
+                        let _ = proxy.send_event(UserEvent::SaveImage { url, filename });
+                    }
+                }
+            } else if *menu_id == img_open.id() {
+                if let Ok(guard) = img_ctx.lock() {
+                    if let Some((url, _)) = guard.clone() {
+                        let _ = proxy.send_event(UserEvent::OpenImageInTab(url));
+                    }
+                }
             }
         }
 
@@ -1797,9 +1831,36 @@ fn main() {
             Event::UserEvent(UserEvent::MenuAction(_)) => {
                 // Already handled above before the match
             }
+            Event::UserEvent(UserEvent::ImageContextMenu { url, filename, x, y }) => {
+                // Store current image context so menu items can reference it
+                if let Ok(mut guard) = img_ctx.lock() {
+                    *guard = Some((url, filename));
+                }
+                // Show the image context menu at the click position
+                #[cfg(target_os = "macos")]
+                unsafe {
+                    img_menu.show_context_menu_for_nsview(
+                        window.ns_view() as _,
+                        Some(tao::dpi::Position::Logical(tao::dpi::LogicalPosition::new(x, y))),
+                    );
+                }
+            }
+            Event::UserEvent(UserEvent::OpenImageInTab(url)) => {
+                let _ = proxy.send_event(UserEvent::NewTab { url: Some(url), activate: true });
+            }
+            Event::UserEvent(UserEvent::DownloadHistoryUpdate) => {
+                for tab in &tabs {
+                    sync_downloads_to_tab(tab, &downloads);
+                }
+            }
             Event::UserEvent(UserEvent::SaveImage { url, filename }) => {
                 let dl_dir = dirs::download_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
                 let save_path = dl_dir.join(&filename);
+                let path_str = save_path.display().to_string();
+                // Record in download history immediately
+                record_download_started(&mut downloads, &url, &path_str);
+                save_downloads(&downloads_path, &downloads);
+                for tab in &tabs { sync_downloads_to_tab(tab, &downloads); }
                 let msg_start = format!("Downloading {}", filename);
                 let _ = chrome_webview.evaluate_script(&format!(
                     "if (window.showToast) window.showToast({}, 'info');",
@@ -1807,17 +1868,29 @@ fn main() {
                 ));
                 let toast_proxy = proxy.clone();
                 let filename_clone = filename.clone();
+                let url_clone = url.clone();
+                let path_str_clone = path_str.clone();
                 std::thread::spawn(move || {
-                    match reqwest::blocking::get(&url) {
+                    match reqwest::blocking::get(&url_clone) {
                         Ok(resp) if resp.status().is_success() => {
                             match resp.bytes() {
                                 Ok(bytes) => {
                                     if let Err(e) = std::fs::write(&save_path, &bytes) {
+                                        let _ = toast_proxy.send_event(UserEvent::DownloadCompleted {
+                                            url: url_clone,
+                                            path: Some(path_str_clone),
+                                            success: false,
+                                        });
                                         let _ = toast_proxy.send_event(UserEvent::ShowToast {
                                             message: format!("Failed to save {}: {}", filename_clone, e),
                                             toast_type: "error".to_string(),
                                         });
                                     } else {
+                                        let _ = toast_proxy.send_event(UserEvent::DownloadCompleted {
+                                            url: url_clone,
+                                            path: Some(path_str_clone),
+                                            success: true,
+                                        });
                                         let _ = toast_proxy.send_event(UserEvent::ShowToast {
                                             message: format!("Saved {} to Downloads", filename_clone),
                                             toast_type: "success".to_string(),
@@ -1825,6 +1898,11 @@ fn main() {
                                     }
                                 }
                                 Err(e) => {
+                                    let _ = toast_proxy.send_event(UserEvent::DownloadCompleted {
+                                        url: url_clone,
+                                        path: None,
+                                        success: false,
+                                    });
                                     let _ = toast_proxy.send_event(UserEvent::ShowToast {
                                         message: format!("Download failed: {}", e),
                                         toast_type: "error".to_string(),
