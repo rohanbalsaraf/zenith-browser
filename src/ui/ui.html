@@ -42,7 +42,6 @@ const tabsBar   = document.getElementById('tabs-bar');
 const urlInput  = document.getElementById('url-input');
 const newTabBtn = document.getElementById('new-tab-btn');
 const settBtn   = document.getElementById('settings-btn');
-const settMenu  = document.getElementById('settings-menu');
 const backBtn   = document.getElementById('back-btn');
 const fwdBtn    = document.getElementById('forward-btn');
 const reloadBtn = document.getElementById('reload-btn');
@@ -122,7 +121,6 @@ function themeName() {
 
 function applyTheme() {
     document.documentElement.setAttribute('data-theme', themeName());
-    document.getElementById('theme-label').textContent = darkMode ? 'Light Mode' : 'Dark Mode';
     localStorage.setItem('zenith-theme', themeName());
 }
 
