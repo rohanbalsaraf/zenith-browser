@@ -26,6 +26,12 @@
             </button>
         </div>
         <div class="address-bar-wrap" id="address-bar-wrap">
+            <div id="permission-box" class="permission-box">
+                <span id="perm-camera" class="perm-icon" title="Camera in use"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
+                <span id="perm-microphone" class="perm-icon" title="Microphone in use"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></span>
+                <span id="perm-geolocation" class="perm-icon" title="Location in use"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span>
+                <span id="perm-notifications" class="perm-icon" title="Notifications active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></span>
+            </div>
             <svg id="search-icon" class="addr-icon search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input type="text" id="url-input" placeholder="Search or enter URL" spellcheck="false" autocomplete="off" autofocus>
             <button id="bookmark-btn" class="addr-btn" title="Bookmark (⌘D)">
@@ -188,6 +194,12 @@ function updateAddressBar() {
         } else {
             bookmarkBtn.classList.remove('active');
         }
+
+        const perms = tab.activePermissions || [];
+        document.getElementById('perm-camera').style.display = perms.some(p => p.includes('camera')) ? 'flex' : 'none';
+        document.getElementById('perm-microphone').style.display = perms.some(p => p.includes('microphone')) ? 'flex' : 'none';
+        document.getElementById('perm-geolocation').style.display = perms.some(p => p.includes('geolocation')) ? 'flex' : 'none';
+        document.getElementById('perm-notifications').style.display = perms.some(p => p.includes('notifications')) ? 'flex' : 'none';
     }
 }
 

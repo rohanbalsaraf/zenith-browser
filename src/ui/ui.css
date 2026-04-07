@@ -150,6 +150,30 @@ body {
 .addr-btn.active { color: #fbbf24; }
 .addr-btn.active svg { fill: currentColor; }
 
+/* ── Permission Indicators ────────────────────────────────────────────────── */
+.permission-box {
+    display: flex; align-items: center; gap: 6px;
+    margin-right: 2px; height: 100%;
+}
+.perm-icon {
+    display: none; align-items: center; justify-content: center;
+    width: 20px; height: 20px; border-radius: 5px;
+    color: var(--green); background: rgba(74, 222, 128, 0.1);
+    transition: transform 0.2s;
+}
+.perm-icon svg { width: 13px; height: 13px; }
+.perm-icon:hover { transform: scale(1.1); background: rgba(74, 222, 128, 0.2); }
+
+#perm-camera, #perm-microphone {
+    color: #f87171; background: rgba(248, 113, 113, 0.1);
+    animation: privacyPulse 2s infinite cubic-bezier(0.4, 0, 0.6, 1);
+}
+
+@keyframes privacyPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(0.95); box-shadow: 0 0 10px rgba(248, 113, 113, 0.2); }
+}
+
 /* ── Content area ────────────────────────────────────────────────────────── */
 #tabs-content { flex: 1; position: relative; background: #15161a; }
 [data-theme="light"] #tabs-content { background: #ffffff; }

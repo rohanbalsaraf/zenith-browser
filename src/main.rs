@@ -94,6 +94,11 @@ enum UserEvent {
         y: f64,
     },
     DownloadHistoryUpdate,
+    TabPermissionChanged {
+        tab_id: u32,
+        permission: String,
+        granted: bool,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -130,6 +135,10 @@ struct IpcMessage {
     forward: Option<bool>,
     #[serde(default)]
     filename: Option<String>,
+    #[serde(default)]
+    permission: Option<String>,
+    #[serde(default)]
+    granted: Option<bool>,
 }
 
 struct BrowserTab {
@@ -137,6 +146,7 @@ struct BrowserTab {
     url: String,
     title: String,
     webview: WebView,
+    active_permissions: Vec<String>,
 }
 
 struct AuthWindow {
@@ -151,6 +161,7 @@ struct ChromeTabState {
     title: String,
     url: String,
     is_bookmarked: bool,
+    active_permissions: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -686,6 +697,47 @@ fn tab_initialization_script(tab_id: u32) -> String {
             var send = function(payload) {{
                 try {{ window.ipc.postMessage(JSON.stringify(payload)); }} catch (_) {{}}
             }};
+
+            // Permission Tracking
+            var notifyPermission = function(name, granted) {{
+                send({{ type: 'tab_permission_update', tabId: {tab_id}, permission: name, granted: granted }});
+            }};
+
+            // Camera & Microphone
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {{
+                var originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+                navigator.mediaDevices.getUserMedia = function(constraints) {{
+                    if (constraints.video) notifyPermission('camera', true);
+                    if (constraints.audio) notifyPermission('microphone', true);
+                    return originalGetUserMedia(constraints);
+                }};
+            }}
+
+            // Geolocation
+            if (navigator.geolocation) {{
+                var originalGetCurrentPosition = navigator.geolocation.getCurrentPosition.bind(navigator.geolocation);
+                navigator.geolocation.getCurrentPosition = function(success, error, options) {{
+                    notifyPermission('geolocation', true);
+                    return originalGetCurrentPosition(success, error, options);
+                }};
+                var originalWatchPosition = navigator.geolocation.watchPosition.bind(navigator.geolocation);
+                navigator.geolocation.watchPosition = function(success, error, options) {{
+                    notifyPermission('geolocation', true);
+                    return originalWatchPosition(success, error, options);
+                }};
+            }}
+
+            // Notifications
+            if (window.Notification && window.Notification.requestPermission) {{
+                var originalRequestPermission = window.Notification.requestPermission.bind(window.Notification);
+                window.Notification.requestPermission = function() {{
+                    return originalRequestPermission.apply(this, arguments).then(function(result) {{
+                        if (result === 'granted') notifyPermission('notifications', true);
+                        return result;
+                    }});
+                }};
+            }}
+
             var notifyUrl = function() {{
                 send({{ type: 'tab_url_update', tabId: {tab_id}, url: window.location.href }});
             }};
@@ -924,6 +976,7 @@ fn sync_chrome_state(chrome: &WebView, tabs: &[BrowserTab], active_tab_id: Optio
                     title: t.title.clone(),
                     url: t.url.clone(),
                     is_bookmarked,
+                    active_permissions: t.active_permissions.clone(),
                 }
             })
             .collect(),
@@ -1005,6 +1058,16 @@ fn dispatch_ipc_message(
                 let _ = proxy.send_event(UserEvent::TabUrlChanged { tab_id: id, url });
             }
         }
+        "tab_permission_update" => {
+            if let (Some(id), Some(perm)) = (tab_id, message.permission) {
+                let granted = message.granted.unwrap_or(true);
+                let _ = proxy.send_event(UserEvent::TabPermissionChanged {
+                    tab_id: id,
+                    permission: perm,
+                    granted,
+                });
+            }
+        }
         "settings-change" | "settings_change" => {
             if let (Some(key), Some(value)) = (message.key, message.value) {
                 let _ = proxy.send_event(UserEvent::SettingsChanged { key, value });
@@ -1070,6 +1133,7 @@ fn build_browser_tab(
     let ipc_proxy = proxy.clone();
     let download_start_proxy = proxy.clone();
     let download_complete_proxy = proxy.clone();
+    let perm_proxy = proxy.clone();
     let protocol_html = ui_html;
     let init_script = tab_initialization_script(tab_id);
 
@@ -1151,8 +1215,9 @@ fn build_browser_tab(
     Some(BrowserTab {
         id: tab_id,
         url: url.to_string(),
-        title: fallback_title_for_url(url),
+        title: "Zenith".to_string(),
         webview,
+        active_permissions: Vec::new(),
     })
 }
 
@@ -1353,7 +1418,13 @@ fn main() {
         apply_browser_theme_to_tab(&initial_tab, &current_theme);
         active_tab_id = Some(next_tab_id);
         next_tab_id += 1;
-        tabs.push(initial_tab);
+        tabs.push(BrowserTab {
+            id: initial_tab.id,
+            url: initial_tab.url,
+            title: initial_tab.title,
+            webview: initial_tab.webview,
+            active_permissions: Vec::new(),
+        });
         apply_tab_visibility(&tabs, active_tab_id);
     }
 
@@ -1687,6 +1758,21 @@ fn main() {
                     }
                 }
             }
+            Event::UserEvent(UserEvent::TabPermissionChanged { tab_id, permission, granted }) => {
+                if let Some(tab) = tabs.iter_mut().find(|t| t.id == tab_id) {
+                    let p = permission.to_lowercase();
+                    if granted {
+                        if !tab.active_permissions.contains(&p) {
+                            tab.active_permissions.push(p);
+                        }
+                    } else {
+                        tab.active_permissions.retain(|perm| perm != &p);
+                    }
+                    if chrome_ready {
+                        sync_chrome_state(&chrome_webview, &tabs, active_tab_id, &bookmarks);
+                    }
+                }
+            }
             Event::UserEvent(UserEvent::TabUrlChanged { tab_id, url }) => {
                 if let Some(index) = tabs.iter().position(|t| t.id == tab_id) {
                     let mut recent_candidate: Option<(String, String)> = None;
@@ -1709,6 +1795,7 @@ fn main() {
                         if should_track_recent_site(&tab.url) {
                             recent_candidate = Some((tab.url.clone(), tab.title.clone()));
                         }
+                        tab.active_permissions.clear();
                     }
 
                     if let Some((recent_url, recent_title)) = recent_candidate
