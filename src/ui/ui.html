@@ -34,7 +34,20 @@
             <input type="text" id="url-input" placeholder="Search or enter URL" spellcheck="false" autocomplete="off">
         </div>
 
+        <button id="settings-btn" class="icon-btn" title="Settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        </button>
+
         <div class="status-indicator" id="status-dot"></div>
+    </div>
+
+    <!-- Settings Menu Popover -->
+    <div id="settings-menu" class="settings-menu hidden">
+        <div class="menu-header">Settings</div>
+        <div class="menu-item" id="new-window-btn">New Window</div>
+        <div class="menu-item" id="clear-history-btn">Clear History</div>
+        <div class="menu-divider"></div>
+        <div class="menu-item" id="about-btn">About Zenith</div>
     </div>
 
     <script>
@@ -43,6 +56,8 @@
         const forwardBtn = document.getElementById('forward-btn');
         const reloadBtn = document.getElementById('reload-btn');
         const newTabBtn = document.getElementById('new-tab-btn');
+        const settingsBtn = document.getElementById('settings-btn');
+        const settingsMenu = document.getElementById('settings-menu');
         const tabsBar = document.getElementById('tabs-bar');
 
         let tabs = [];
@@ -51,6 +66,20 @@
         function sendMsg(type, payload) {
             window.ipc.postMessage(JSON.stringify({ type, payload }));
         }
+
+        // Keyboard Shortcuts
+        window.addEventListener('keydown', (e) => {
+            const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+            const cmdKey = isMac ? e.metaKey : e.ctrlKey;
+            
+            if (cmdKey && e.key === 't') {
+                e.preventDefault();
+                sendMsg('new_tab');
+            } else if (cmdKey && e.key === 'w') {
+                e.preventDefault();
+                if (activeTabId !== null) sendMsg('close_tab', activeTabId);
+            }
+        });
 
         urlInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
@@ -71,6 +100,27 @@
         forwardBtn.addEventListener('click', () => sendMsg('forward'));
         reloadBtn.addEventListener('click', () => sendMsg('reload'));
         newTabBtn.addEventListener('click', () => sendMsg('new_tab'));
+
+        settingsBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            settingsMenu.classList.toggle('hidden');
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!settingsMenu.contains(e.target) && e.target !== settingsBtn) {
+                settingsMenu.classList.add('hidden');
+            }
+        });
+
+        document.getElementById('new-window-btn').addEventListener('click', () => sendMsg('new_window'));
+        document.getElementById('clear-history-btn').addEventListener('click', () => {
+            alert("History cleared!"); // Placeholder
+            settingsMenu.classList.add('hidden');
+        });
+        document.getElementById('about-btn').addEventListener('click', () => {
+            alert("Zenith Browser v0.1.0\nModern. Minimal. Rapid.");
+            settingsMenu.classList.add('hidden');
+        });
 
         function createTabElement(tab) {
             const div = document.createElement('div');
