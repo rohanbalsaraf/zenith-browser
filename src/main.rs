@@ -1895,18 +1895,19 @@ fn main() {
     let lastQuery = '';
     
     function doFind(q, forward) {
-        if (!q) { window.getSelection() && window.getSelection().removeAllRanges(); countEl.textContent = ''; inp.focus(); return; }
+        if (!q) { window.getSelection() && window.getSelection().removeAllRanges(); countEl.textContent = ''; return; }
         if (q !== lastQuery) {
             window.getSelection() && window.getSelection().removeAllRanges();
             lastQuery = q;
         }
         const found = window.find(q, false, !forward, true, false, false, false);
-        countEl.textContent = found ? '✓' : 'Not found';
-        // Reclaim focus immediately after window.find() moves it to page content
-        inp.focus();
+        countEl.textContent = found ? '✓ Found' : '✗ Not found';
+        // Reclaim focus after window.find() moves it to the highlighted text
+        setTimeout(function() { inp.focus(); }, 0);
     }
     
-    inp.addEventListener('input', function(e) { doFind(inp.value, true); });
+    // Do NOT search on input - only on Enter / button click
+    // (live search causes focus-reset loop after every character)
     inp.addEventListener('keydown', function(e) {
         e.stopPropagation();
         e.stopImmediatePropagation();
@@ -1914,8 +1915,8 @@ fn main() {
         if (e.key === 'Escape') { host.remove(); e.preventDefault(); }
     }, true);
     
-    shadow.getElementById('next').addEventListener('click', function() { doFind(inp.value, true); inp.focus(); });
-    shadow.getElementById('prev').addEventListener('click', function() { doFind(inp.value, false); inp.focus(); });
+    shadow.getElementById('next').addEventListener('click', function() { doFind(inp.value, true); });
+    shadow.getElementById('prev').addEventListener('click', function() { doFind(inp.value, false); });
     shadow.getElementById('close').addEventListener('click', function() { host.remove(); });
     
     setTimeout(function() { inp.focus(); }, 30);
