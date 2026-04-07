@@ -244,6 +244,11 @@ function bookmarkActiveTab() {
 }
 
 urlInput.onkeydown = (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        urlInput.select();
+        return;
+    }
     if (e.key === 'Enter') {
         navigateActive(urlInput.value);
         urlInput.blur();

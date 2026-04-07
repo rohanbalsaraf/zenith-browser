@@ -1051,7 +1051,44 @@ fn build_browser_tab(
     })
 }
 
+#[cfg(target_os = "macos")]
+fn setup_macos_menu() {
+    use muda::{Menu, Submenu, PredefinedMenuItem};
+    let menu = Menu::new();
+
+    let app_m = Submenu::new("Zenith", true);
+    menu.append(&app_m).unwrap();
+    app_m.append_items(&[
+        &PredefinedMenuItem::about(None, None),
+        &PredefinedMenuItem::separator(),
+        &PredefinedMenuItem::services(None),
+        &PredefinedMenuItem::separator(),
+        &PredefinedMenuItem::hide(None),
+        &PredefinedMenuItem::hide_others(None),
+        &PredefinedMenuItem::show_all(None),
+        &PredefinedMenuItem::separator(),
+        &PredefinedMenuItem::quit(None),
+    ]).unwrap();
+
+    let edit_m = Submenu::new("Edit", true);
+    menu.append(&edit_m).unwrap();
+    edit_m.append_items(&[
+        &PredefinedMenuItem::undo(None),
+        &PredefinedMenuItem::redo(None),
+        &PredefinedMenuItem::separator(),
+        &PredefinedMenuItem::cut(None),
+        &PredefinedMenuItem::copy(None),
+        &PredefinedMenuItem::paste(None),
+        &PredefinedMenuItem::select_all(None),
+    ]).unwrap();
+
+    let _ = menu.init_for_nsapp();
+}
+
 fn main() {
+    #[cfg(target_os = "macos")]
+    setup_macos_menu();
+
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
     let proxy = event_loop.create_proxy();
 
