@@ -115,6 +115,7 @@ enum UserEvent {
     SuggestionResults(Vec<Suggestion>),
     SuggestionsShown,
     SuggestionsHidden,
+    TabStateUpdate(ChromeState),
 }
 
 #[derive(Clone, Copy)]
@@ -1099,7 +1100,7 @@ fn apply_tab_bounds(tabs: &[BrowserTab], bounds: Rect) {
     }
 }
 
-fn sync_chrome_state(chrome: &WebView, tabs: &[BrowserTab], active_tab_id: Option<u32>, bookmarks: &[BookmarkSite]) {
+fn sync_chrome_state(chrome: &WebView, palette: &WebView, tabs: &[BrowserTab], active_tab_id: Option<u32>, bookmarks: &[BookmarkSite]) {
     let state = ChromeState {
         tabs: tabs
             .iter()
@@ -1120,6 +1121,7 @@ fn sync_chrome_state(chrome: &WebView, tabs: &[BrowserTab], active_tab_id: Optio
     if let Ok(json) = serde_json::to_string(&state) {
         let js = format!("if(window.zenithSetState) window.zenithSetState({json});");
         let _ = chrome.evaluate_script(&js);
+        let _ = palette.evaluate_script(&js);
     }
 }
 
@@ -1661,7 +1663,7 @@ fn main() {
         match event {
             Event::UserEvent(UserEvent::ChromeReady) => {
                 chrome_ready = true;
-                sync_chrome_state(&chrome_webview, &tabs, active_tab_id, &bookmarks);
+                sync_chrome_state(&chrome_webview, &palette_webview, &tabs, active_tab_id, &bookmarks);
                 for tab in &tabs {
                     sync_recent_sites_to_tab(tab, &recent_sites);
                     sync_bookmarks_to_tab(tab, &bookmarks);
@@ -1698,7 +1700,7 @@ fn main() {
                     let _ = chrome_webview.set_visible(false);
                     let _ = chrome_webview.set_visible(true);
                     if chrome_ready {
-                        sync_chrome_state(&chrome_webview, &tabs, active_tab_id, &bookmarks);
+                        sync_chrome_state(&chrome_webview, &palette_webview, &tabs, active_tab_id, &bookmarks);
                     }
                 }
             }
@@ -1710,7 +1712,7 @@ fn main() {
                     let _ = chrome_webview.set_visible(false);
                     let _ = chrome_webview.set_visible(true);
                     if chrome_ready {
-                        sync_chrome_state(&chrome_webview, &tabs, active_tab_id, &bookmarks);
+                        sync_chrome_state(&chrome_webview, &palette_webview, &tabs, active_tab_id, &bookmarks);
                     }
                 }
             }
@@ -1732,7 +1734,7 @@ fn main() {
 
                     apply_tab_visibility(&tabs, active_tab_id);
                     if chrome_ready {
-                        sync_chrome_state(&chrome_webview, &tabs, active_tab_id, &bookmarks);
+                        sync_chrome_state(&chrome_webview, &palette_webview, &tabs, active_tab_id, &bookmarks);
                     }
                 }
             }
@@ -1750,7 +1752,7 @@ fn main() {
                             tab.title = fallback_title_for_url(&next_url);
                             let _ = tab.webview.load_url(&next_url);
                             if chrome_ready {
-                                sync_chrome_state(&chrome_webview, &tabs, active_tab_id, &bookmarks);
+                                sync_chrome_state(&chrome_webview, &palette_webview, &tabs, active_tab_id, &bookmarks);
                             }
                         }
                     }
@@ -1782,7 +1784,7 @@ fn main() {
                     active_tab_id = Some(existing_id);
                     apply_tab_visibility(&tabs, active_tab_id);
                     if chrome_ready {
-                        sync_chrome_state(&chrome_webview, &tabs, active_tab_id, &bookmarks);
+                        sync_chrome_state(&chrome_webview, &palette_webview, &tabs, active_tab_id, &bookmarks);
                     }
                 } else {
                     let _ = proxy.send_event(UserEvent::NewTab {
@@ -1800,7 +1802,7 @@ fn main() {
                     active_tab_id = Some(existing_id);
                     apply_tab_visibility(&tabs, active_tab_id);
                     if chrome_ready {
-                        sync_chrome_state(&chrome_webview, &tabs, active_tab_id, &bookmarks);
+                        sync_chrome_state(&chrome_webview, &palette_webview, &tabs, active_tab_id, &bookmarks);
                     }
                 } else {
                     let _ = proxy.send_event(UserEvent::NewTab {
@@ -1818,7 +1820,7 @@ fn main() {
                     active_tab_id = Some(existing_id);
                     apply_tab_visibility(&tabs, active_tab_id);
                     if chrome_ready {
-                        sync_chrome_state(&chrome_webview, &tabs, active_tab_id, &bookmarks);
+                        sync_chrome_state(&chrome_webview, &palette_webview, &tabs, active_tab_id, &bookmarks);
                     }
                 } else {
                     let _ = proxy.send_event(UserEvent::NewTab {
@@ -1836,7 +1838,7 @@ fn main() {
                     let (changed, was_added) = toggle_bookmark(&mut bookmarks, &bookmark_url, &bookmark_title);
                     if changed {
                         save_bookmarks(&bookmarks_path, &bookmarks);
-                        sync_chrome_state(&chrome_webview, &tabs, active_tab_id, &bookmarks);
+                        sync_chrome_state(&chrome_webview, &palette_webview, &tabs, active_tab_id, &bookmarks);
                         for t in &tabs {
                             sync_bookmarks_to_tab(t, &bookmarks);
                         }
@@ -1965,7 +1967,7 @@ fn main() {
                         tab.active_permissions.retain(|perm| perm != &p);
                     }
                     if chrome_ready {
-                        sync_chrome_state(&chrome_webview, &tabs, active_tab_id, &bookmarks);
+                        sync_chrome_state(&chrome_webview, &palette_webview, &tabs, active_tab_id, &bookmarks);
                     }
                 }
             }
@@ -2012,7 +2014,7 @@ fn main() {
                     }
 
                     if chrome_ready {
-                        sync_chrome_state(&chrome_webview, &tabs, active_tab_id, &bookmarks);
+                        sync_chrome_state(&chrome_webview, &palette_webview, &tabs, active_tab_id, &bookmarks);
                     }
                 }
             }
@@ -2046,7 +2048,7 @@ fn main() {
                     }
 
                     if chrome_ready {
-                        sync_chrome_state(&chrome_webview, &tabs, active_tab_id, &bookmarks);
+                        sync_chrome_state(&chrome_webview, &palette_webview, &tabs, active_tab_id, &bookmarks);
                     }
                 }
             }
@@ -2349,6 +2351,13 @@ fn main() {
             Event::UserEvent(UserEvent::SuggestionResults(results)) => {
                 let js = format!("if (window.zenithSetSuggestions) window.zenithSetSuggestions({});", serde_json::to_string(&results).unwrap());
                 let _ = palette_webview.evaluate_script(&js);
+            }
+            Event::UserEvent(UserEvent::TabStateUpdate(state)) => {
+                if let Ok(json) = serde_json::to_string(&state) {
+                    let js = format!("if (window.zenithSetState) window.zenithSetState({});", json);
+                    let _ = chrome_webview.evaluate_script(&js);
+                    let _ = palette_webview.evaluate_script(&js);
+                }
             }
             _ => {}
         }
