@@ -18,7 +18,7 @@ use wry::{
 };
 
 const CHROME_HEIGHT: u32 = 82;
-const CUSTOM_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:124.0) Gecko/20100101 Firefox/124.0";
+const CUSTOM_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Edg/122.0.0.0";
 const HOME_URL: &str = "zenith://assets/home";
 const SETTINGS_URL: &str = "zenith://assets/settings";
 const HISTORY_URL: &str = "zenith://assets/history";
@@ -94,8 +94,6 @@ struct IpcMessage {
     key: Option<String>,
     #[serde(default)]
     value: Option<String>,
-    #[serde(default)]
-    open: Option<bool>,
 }
 
 struct BrowserTab {
@@ -633,6 +631,17 @@ fn tab_initialization_script(tab_id: u32) -> String {
     format!(
         r#"
         (function() {{
+            try {{
+                Object.defineProperty(navigator, 'vendor', {{ get: function() {{ return 'Google Inc.'; }} }});
+                Object.defineProperty(navigator, 'userAgentData', {{
+                    get: () => ({{
+                        brands: [ {{ brand: 'Chromium', version: '122' }}, {{ brand: 'Microsoft Edge', version: '122' }} ],
+                        mobile: false,
+                        platform: 'macOS'
+                    }})
+                }});
+            }} catch (_) {{}}
+            
             window.__ZENITH_TAB_ID = {tab_id};
             var send = function(payload) {{
                 try {{ window.ipc.postMessage(JSON.stringify(payload)); }} catch (_) {{}}
@@ -1389,6 +1398,20 @@ fn main() {
                                     }
                                     wry::NewWindowResponse::Deny
                                 })
+                                .with_initialization_script(
+                                    r#"
+                                    try {
+                                        Object.defineProperty(navigator, 'vendor', { get: function() { return 'Google Inc.'; } });
+                                        Object.defineProperty(navigator, 'userAgentData', {
+                                            get: () => ({
+                                                brands: [ { brand: 'Chromium', version: '122' }, { brand: 'Microsoft Edge', version: '122' } ],
+                                                mobile: false,
+                                                platform: 'macOS'
+                                            })
+                                        });
+                                    } catch (_) {}
+                                    "#
+                                )
                                 .build(&auth_window)
                     {
                         auth_windows.push(AuthWindow {
