@@ -1,6 +1,7 @@
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
+use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tao::{
@@ -104,6 +105,12 @@ struct ChromeState {
     active_id: Option<u32>,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+struct RecentSite {
+    url: String,
+    title: String,
+}
+
 fn is_http_like_url(url: &str) -> bool {
     url.starts_with("http://") || url.starts_with("https://")
 }
@@ -118,6 +125,10 @@ fn profile_directory() -> PathBuf {
     } else {
         std::env::temp_dir().join("zenith-profile")
     }
+}
+
+fn recent_sites_path() -> PathBuf {
+    profile_directory().join("recent-sites.json")
 }
 
 fn fallback_title_for_url(raw_url: &str) -> String {
@@ -174,6 +185,77 @@ fn normalize_user_input_url(raw: &str) -> String {
 
     let q = utf8_percent_encode(trimmed, NON_ALPHANUMERIC).to_string();
     format!("https://www.google.com/search?igu=1&q={q}")
+}
+
+fn load_recent_sites(path: &PathBuf) -> Vec<RecentSite> {
+    let Ok(raw) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    serde_json::from_str::<Vec<RecentSite>>(&raw).unwrap_or_default()
+}
+
+fn save_recent_sites(path: &PathBuf, recent_sites: &[RecentSite]) {
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Ok(serialized) = serde_json::to_string(recent_sites) {
+        let _ = fs::write(path, serialized);
+    }
+}
+
+fn should_track_recent_site(raw_url: &str) -> bool {
+    if !is_http_like_url(raw_url) {
+        return false;
+    }
+
+    let Ok(url) = Url::parse(raw_url) else {
+        return false;
+    };
+
+    let host = url.host_str().unwrap_or_default().to_ascii_lowercase();
+    if host.is_empty() {
+        return false;
+    }
+
+    if host == "accounts.google.com" {
+        return false;
+    }
+
+    true
+}
+
+fn upsert_recent_site(recent_sites: &mut Vec<RecentSite>, raw_url: &str, raw_title: &str) -> bool {
+    if !should_track_recent_site(raw_url) {
+        return false;
+    }
+
+    let title = resolved_tab_title(raw_title, raw_url);
+    let mut changed = false;
+
+    if let Some(existing) = recent_sites.iter().position(|s| s.url == raw_url) {
+        let item = recent_sites.remove(existing);
+        if existing != 0 || item.title != title {
+            changed = true;
+        }
+    } else {
+        changed = true;
+    }
+
+    recent_sites.insert(
+        0,
+        RecentSite {
+            url: raw_url.to_string(),
+            title,
+        },
+    );
+
+    const MAX_RECENT_SITES: usize = 20;
+    if recent_sites.len() > MAX_RECENT_SITES {
+        recent_sites.truncate(MAX_RECENT_SITES);
+        changed = true;
+    }
+
+    changed
 }
 
 fn is_auth_host(host: &str) -> bool {
@@ -493,6 +575,18 @@ fn apply_browser_theme_to_tab(tab: &BrowserTab, theme: &str) {
     }
 }
 
+fn sync_recent_sites_to_tab(tab: &BrowserTab, recent_sites: &[RecentSite]) {
+    if !tab.url.starts_with(HOME_URL) {
+        return;
+    }
+
+    if let Ok(sites_json) = serde_json::to_string(recent_sites) {
+        let js =
+            format!("window.postMessage({{ type: 'recent-sites', sites: {sites_json} }}, '*');");
+        let _ = tab.webview.evaluate_script(&js);
+    }
+}
+
 fn apply_tab_visibility(tabs: &[BrowserTab], active_tab_id: Option<u32>) {
     for tab in tabs {
         let _ = tab.webview.set_visible(Some(tab.id) == active_tab_id);
@@ -677,6 +771,7 @@ fn main() {
 
     let profile_dir = profile_directory();
     let mut web_context = WebContext::new(Some(profile_dir.join("webview")));
+    let recent_sites_path = recent_sites_path();
 
     let window = WindowBuilder::new()
         .with_title("Zenith")
@@ -713,6 +808,7 @@ fn main() {
     let mut current_theme = "dark".to_string();
     let mut auth_windows: Vec<AuthWindow> = Vec::new();
     let mut background_sync_webview: Option<WebView> = None;
+    let mut recent_sites = load_recent_sites(&recent_sites_path);
 
     if let Some(initial_tab) = build_browser_tab(
         &window,
@@ -738,6 +834,9 @@ fn main() {
             Event::UserEvent(UserEvent::ChromeReady) => {
                 chrome_ready = true;
                 sync_chrome_state(&chrome_webview, &tabs, active_tab_id);
+                for tab in &tabs {
+                    sync_recent_sites_to_tab(tab, &recent_sites);
+                }
             }
             Event::UserEvent(UserEvent::NewTab { url, activate }) => {
                 let start_url = normalize_user_input_url(url.as_deref().unwrap_or(HOME_URL));
@@ -911,27 +1010,65 @@ fn main() {
                 }
             }
             Event::UserEvent(UserEvent::TabUrlChanged { tab_id, url }) => {
-                if let Some(tab) = tabs.iter_mut().find(|t| t.id == tab_id) {
-                    let old_fallback = fallback_title_for_url(&tab.url);
-                    tab.url = url;
-                    if tab.title.trim().is_empty() || tab.title == "Zenith" || tab.title == old_fallback
+                if let Some(index) = tabs.iter().position(|t| t.id == tab_id) {
+                    let mut recent_candidate: Option<(String, String)> = None;
                     {
-                        tab.title = fallback_title_for_url(&tab.url);
+                        let tab = &mut tabs[index];
+                        let old_fallback = fallback_title_for_url(&tab.url);
+                        tab.url = url;
+                        if tab.title.trim().is_empty()
+                            || tab.title == "Zenith"
+                            || tab.title == old_fallback
+                        {
+                            tab.title = fallback_title_for_url(&tab.url);
+                        }
+                        if should_warmup_youtube_account_sync(&tab.url) {
+                            let _ = proxy.send_event(UserEvent::OpenBackgroundAuthSync(
+                                "https://accounts.google.com/RotateCookiesPage".to_string(),
+                            ));
+                        }
+                        apply_browser_theme_to_tab(tab, &current_theme);
+                        if should_track_recent_site(&tab.url) {
+                            recent_candidate = Some((tab.url.clone(), tab.title.clone()));
+                        }
                     }
-                    if should_warmup_youtube_account_sync(&tab.url) {
-                        let _ = proxy.send_event(UserEvent::OpenBackgroundAuthSync(
-                            "https://accounts.google.com/RotateCookiesPage".to_string(),
-                        ));
+
+                    if let Some((recent_url, recent_title)) = recent_candidate
+                        && upsert_recent_site(&mut recent_sites, &recent_url, &recent_title)
+                    {
+                        save_recent_sites(&recent_sites_path, &recent_sites);
+                        for tab in &tabs {
+                            sync_recent_sites_to_tab(tab, &recent_sites);
+                        }
+                    } else if let Some(home_tab) = tabs.get(index) {
+                        sync_recent_sites_to_tab(home_tab, &recent_sites);
                     }
-                    apply_browser_theme_to_tab(tab, &current_theme);
+
                     if chrome_ready {
                         sync_chrome_state(&chrome_webview, &tabs, active_tab_id);
                     }
                 }
             }
             Event::UserEvent(UserEvent::TabTitleChanged { tab_id, title }) => {
-                if let Some(tab) = tabs.iter_mut().find(|t| t.id == tab_id) {
-                    tab.title = resolved_tab_title(&title, &tab.url);
+                if let Some(index) = tabs.iter().position(|t| t.id == tab_id) {
+                    let mut recent_candidate: Option<(String, String)> = None;
+                    {
+                        let tab = &mut tabs[index];
+                        tab.title = resolved_tab_title(&title, &tab.url);
+                        if should_track_recent_site(&tab.url) {
+                            recent_candidate = Some((tab.url.clone(), tab.title.clone()));
+                        }
+                    }
+
+                    if let Some((recent_url, recent_title)) = recent_candidate
+                        && upsert_recent_site(&mut recent_sites, &recent_url, &recent_title)
+                    {
+                        save_recent_sites(&recent_sites_path, &recent_sites);
+                        for tab in &tabs {
+                            sync_recent_sites_to_tab(tab, &recent_sites);
+                        }
+                    }
+
                     if chrome_ready {
                         sync_chrome_state(&chrome_webview, &tabs, active_tab_id);
                     }
@@ -999,9 +1136,11 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    use super::RecentSite;
     use super::{
         fallback_title_for_url, is_background_google_account_sync_url, normalize_user_input_url,
-        resolved_tab_title, should_open_auth_window, should_warmup_youtube_account_sync,
+        resolved_tab_title, should_open_auth_window, should_track_recent_site,
+        should_warmup_youtube_account_sync, upsert_recent_site,
     };
 
     #[test]
@@ -1085,5 +1224,32 @@ mod tests {
         assert!(!should_warmup_youtube_account_sync(
             "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
         ));
+    }
+
+    #[test]
+    fn tracks_recent_sites_only_for_regular_http_pages() {
+        assert!(should_track_recent_site("https://example.com/a"));
+        assert!(!should_track_recent_site("zenith://assets/home"));
+        assert!(!should_track_recent_site(
+            "https://accounts.google.com/ServiceLogin"
+        ));
+    }
+
+    #[test]
+    fn upsert_recent_site_moves_duplicate_to_front() {
+        let mut sites = vec![
+            RecentSite {
+                url: "https://a.com".to_string(),
+                title: "A".to_string(),
+            },
+            RecentSite {
+                url: "https://b.com".to_string(),
+                title: "B".to_string(),
+            },
+        ];
+        assert!(upsert_recent_site(&mut sites, "https://a.com", "Site A"));
+        assert_eq!(sites[0].url, "https://a.com");
+        assert_eq!(sites[0].title, "Site A");
+        assert_eq!(sites.len(), 2);
     }
 }
