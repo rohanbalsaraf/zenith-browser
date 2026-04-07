@@ -44,6 +44,7 @@
     <div class="menu-section-label">Library</div>
     <div class="menu-item" id="m-bookmark"><span class="menu-item-icon">★</span>Bookmark This Tab<span class="menu-kbd">⌘D</span></div>
     <div class="menu-item" id="m-history"><span class="menu-item-icon">🕘</span>History<span class="menu-kbd">⌘Y</span></div>
+    <div class="menu-item" id="m-downloads"><span class="menu-item-icon">↓</span>Downloads<span class="menu-kbd">⌘J</span></div>
     <div class="menu-divider"></div>
     <div class="menu-section-label">Appearance</div>
     <div class="menu-item" id="m-theme"><span class="menu-item-icon">◑</span><span id="theme-label">Light Mode</span></div>
@@ -224,6 +225,11 @@ function openHistoryTab() {
     settMenu.classList.add('hidden');
 }
 
+function openDownloadsTab() {
+    send({ type: 'open_downloads_tab' });
+    settMenu.classList.add('hidden');
+}
+
 function sendAction(action) {
     if (activeId === null) return;
     send({ type: 'tab_action', tabId: activeId, action });
@@ -253,6 +259,7 @@ document.getElementById('m-close-tab').onclick = () => closeActiveTab();
 document.getElementById('m-settings').onclick = () => openSettingsTab();
 document.getElementById('m-bookmark').onclick = () => bookmarkActiveTab();
 document.getElementById('m-history').onclick = () => openHistoryTab();
+document.getElementById('m-downloads').onclick = () => openDownloadsTab();
 document.getElementById('m-theme').onclick = () => {
     darkMode = !darkMode;
     applyTheme();
@@ -287,6 +294,10 @@ document.addEventListener('keydown', (e) => {
     if (key === 'y') {
         e.preventDefault();
         openHistoryTab();
+    }
+    if (key === 'j') {
+        e.preventDefault();
+        openDownloadsTab();
     }
     if (e.key === ',') {
         e.preventDefault();

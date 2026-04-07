@@ -21,6 +21,7 @@ const CHROME_HEIGHT: u32 = 82;
 const HOME_URL: &str = "zenith://assets/home";
 const SETTINGS_URL: &str = "zenith://assets/settings";
 const HISTORY_URL: &str = "zenith://assets/history";
+const DOWNLOADS_URL: &str = "zenith://assets/downloads";
 
 enum UserEvent {
     ChromeReady,
@@ -40,6 +41,7 @@ enum UserEvent {
     },
     OpenSettingsTab,
     OpenHistoryTab,
+    OpenDownloadsTab,
     BookmarkActiveTab(Option<u32>),
     OpenAuthWindow(String),
     OpenBackgroundAuthSync(String),
@@ -56,6 +58,16 @@ enum UserEvent {
         value: String,
     },
     ClearHistory,
+    ClearDownloads,
+    DownloadStarted {
+        url: String,
+        path: String,
+    },
+    DownloadCompleted {
+        url: String,
+        path: Option<String>,
+        success: bool,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -121,6 +133,13 @@ struct BookmarkSite {
     title: String,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+struct DownloadEntry {
+    url: String,
+    path: String,
+    status: String,
+}
+
 fn is_http_like_url(url: &str) -> bool {
     url.starts_with("http://") || url.starts_with("https://")
 }
@@ -145,12 +164,19 @@ fn bookmarks_path() -> PathBuf {
     profile_directory().join("bookmarks.json")
 }
 
+fn downloads_path() -> PathBuf {
+    profile_directory().join("downloads.json")
+}
+
 fn fallback_title_for_url(raw_url: &str) -> String {
     if raw_url.starts_with(SETTINGS_URL) {
         return "Settings".to_string();
     }
     if raw_url.starts_with(HISTORY_URL) {
         return "History".to_string();
+    }
+    if raw_url.starts_with(DOWNLOADS_URL) {
+        return "Downloads".to_string();
     }
     if raw_url.starts_with(HOME_URL) {
         return "New Tab".to_string();
@@ -218,6 +244,13 @@ fn load_bookmarks(path: &PathBuf) -> Vec<BookmarkSite> {
     serde_json::from_str::<Vec<BookmarkSite>>(&raw).unwrap_or_default()
 }
 
+fn load_downloads(path: &PathBuf) -> Vec<DownloadEntry> {
+    let Ok(raw) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    serde_json::from_str::<Vec<DownloadEntry>>(&raw).unwrap_or_default()
+}
+
 fn save_recent_sites(path: &PathBuf, recent_sites: &[RecentSite]) {
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
@@ -232,6 +265,15 @@ fn save_bookmarks(path: &PathBuf, bookmarks: &[BookmarkSite]) {
         let _ = fs::create_dir_all(parent);
     }
     if let Ok(serialized) = serde_json::to_string(bookmarks) {
+        let _ = fs::write(path, serialized);
+    }
+}
+
+fn save_downloads(path: &PathBuf, downloads: &[DownloadEntry]) {
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Ok(serialized) = serde_json::to_string(downloads) {
         let _ = fs::write(path, serialized);
     }
 }
@@ -323,6 +365,62 @@ fn upsert_bookmark(bookmarks: &mut Vec<BookmarkSite>, raw_url: &str, raw_title: 
     }
 
     changed
+}
+
+fn record_download_started(downloads: &mut Vec<DownloadEntry>, url: &str, path: &str) {
+    if url.trim().is_empty() {
+        return;
+    }
+
+    if let Some(existing) = downloads.iter().position(|d| d.url == url) {
+        downloads.remove(existing);
+    }
+
+    downloads.insert(
+        0,
+        DownloadEntry {
+            url: url.to_string(),
+            path: path.to_string(),
+            status: "in_progress".to_string(),
+        },
+    );
+
+    const MAX_DOWNLOADS: usize = 80;
+    if downloads.len() > MAX_DOWNLOADS {
+        downloads.truncate(MAX_DOWNLOADS);
+    }
+}
+
+fn record_download_completed(
+    downloads: &mut Vec<DownloadEntry>,
+    url: &str,
+    path: Option<String>,
+    success: bool,
+) {
+    let status = if success { "completed" } else { "failed" }.to_string();
+    let final_path = path.unwrap_or_default();
+
+    if let Some(existing) = downloads.iter_mut().find(|d| d.url == url) {
+        existing.status = status;
+        if !final_path.is_empty() {
+            existing.path = final_path;
+        }
+        return;
+    }
+
+    downloads.insert(
+        0,
+        DownloadEntry {
+            url: url.to_string(),
+            path: final_path,
+            status,
+        },
+    );
+
+    const MAX_DOWNLOADS: usize = 80;
+    if downloads.len() > MAX_DOWNLOADS {
+        downloads.truncate(MAX_DOWNLOADS);
+    }
 }
 
 fn is_auth_host(host: &str) -> bool {
@@ -514,6 +612,13 @@ fn handle_zenith_request(ui_html: &str, request: Request<Vec<u8>>) -> Response<C
             .unwrap();
     }
 
+    if host == "assets" && (path == "/downloads" || path == "/downloads/") {
+        return Response::builder()
+            .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+            .body(Cow::Owned(include_bytes!("ui/downloads.html").to_vec()))
+            .unwrap();
+    }
+
     Response::builder()
         .status(404)
         .body(Cow::Borrowed(&[][..]))
@@ -687,6 +792,19 @@ fn sync_history_to_tab(tab: &BrowserTab, recent_sites: &[RecentSite]) {
     }
 }
 
+fn sync_downloads_to_tab(tab: &BrowserTab, downloads: &[DownloadEntry]) {
+    if !tab.url.starts_with(DOWNLOADS_URL) {
+        return;
+    }
+
+    if let Ok(downloads_json) = serde_json::to_string(downloads) {
+        let js = format!(
+            "window.postMessage({{ type: 'downloads-data', entries: {downloads_json} }}, '*');"
+        );
+        let _ = tab.webview.evaluate_script(&js);
+    }
+}
+
 fn apply_tab_visibility(tabs: &[BrowserTab], active_tab_id: Option<u32>) {
     for tab in tabs {
         let _ = tab.webview.set_visible(Some(tab.id) == active_tab_id);
@@ -769,6 +887,9 @@ fn dispatch_ipc_message(
         "open_history_tab" => {
             let _ = proxy.send_event(UserEvent::OpenHistoryTab);
         }
+        "open_downloads_tab" => {
+            let _ = proxy.send_event(UserEvent::OpenDownloadsTab);
+        }
         "bookmark_active_tab" => {
             let _ = proxy.send_event(UserEvent::BookmarkActiveTab(tab_id));
         }
@@ -804,6 +925,9 @@ fn dispatch_ipc_message(
         "clear_history" => {
             let _ = proxy.send_event(UserEvent::ClearHistory);
         }
+        "clear_downloads" => {
+            let _ = proxy.send_event(UserEvent::ClearDownloads);
+        }
         _ => {}
     }
 }
@@ -821,6 +945,8 @@ fn build_browser_tab(
     let title_proxy = proxy.clone();
     let load_proxy = proxy.clone();
     let ipc_proxy = proxy.clone();
+    let download_start_proxy = proxy.clone();
+    let download_complete_proxy = proxy.clone();
     let protocol_html = ui_html;
     let init_script = tab_initialization_script(tab_id);
 
@@ -857,6 +983,20 @@ fn build_browser_tab(
         .with_on_page_load_handler(move |_event: PageLoadEvent, url| {
             let _ = load_proxy.send_event(UserEvent::TabUrlChanged { tab_id, url });
         })
+        .with_download_started_handler(move |url, path| {
+            let _ = download_start_proxy.send_event(UserEvent::DownloadStarted {
+                url,
+                path: path.to_string_lossy().to_string(),
+            });
+            true
+        })
+        .with_download_completed_handler(move |url, path, success| {
+            let _ = download_complete_proxy.send_event(UserEvent::DownloadCompleted {
+                url,
+                path: path.map(|p| p.to_string_lossy().to_string()),
+                success,
+            });
+        })
         .with_ipc_handler(move |request: Request<String>| {
             dispatch_ipc_message(request.body(), &ipc_proxy, Some(tab_id));
         })
@@ -882,6 +1022,7 @@ fn main() {
     let mut web_context = WebContext::new(Some(profile_dir.join("webview")));
     let recent_sites_path = recent_sites_path();
     let bookmarks_path = bookmarks_path();
+    let downloads_path = downloads_path();
 
     let window = WindowBuilder::new()
         .with_title("Zenith")
@@ -920,6 +1061,7 @@ fn main() {
     let mut background_sync_webview: Option<WebView> = None;
     let mut recent_sites = load_recent_sites(&recent_sites_path);
     let mut bookmarks = load_bookmarks(&bookmarks_path);
+    let mut downloads = load_downloads(&downloads_path);
 
     if let Some(initial_tab) = build_browser_tab(
         &window,
@@ -949,6 +1091,7 @@ fn main() {
                     sync_recent_sites_to_tab(tab, &recent_sites);
                     sync_bookmarks_to_tab(tab, &bookmarks);
                     sync_history_to_tab(tab, &recent_sites);
+                    sync_downloads_to_tab(tab, &downloads);
                 }
             }
             Event::UserEvent(UserEvent::NewTab { url, activate }) => {
@@ -972,6 +1115,7 @@ fn main() {
                         sync_recent_sites_to_tab(new_tab, &recent_sites);
                         sync_bookmarks_to_tab(new_tab, &bookmarks);
                         sync_history_to_tab(new_tab, &recent_sites);
+                        sync_downloads_to_tab(new_tab, &downloads);
                     }
                     next_tab_id += 1;
                     apply_tab_visibility(&tabs, active_tab_id);
@@ -1085,6 +1229,24 @@ fn main() {
                     });
                 }
             }
+            Event::UserEvent(UserEvent::OpenDownloadsTab) => {
+                if let Some(existing_id) = tabs
+                    .iter()
+                    .find(|t| t.url.starts_with(DOWNLOADS_URL))
+                    .map(|t| t.id)
+                {
+                    active_tab_id = Some(existing_id);
+                    apply_tab_visibility(&tabs, active_tab_id);
+                    if chrome_ready {
+                        sync_chrome_state(&chrome_webview, &tabs, active_tab_id);
+                    }
+                } else {
+                    let _ = proxy.send_event(UserEvent::NewTab {
+                        url: Some(DOWNLOADS_URL.to_string()),
+                        activate: true,
+                    });
+                }
+            }
             Event::UserEvent(UserEvent::BookmarkActiveTab(tab_id)) => {
                 if let Some(target_id) = tab_id.or(active_tab_id)
                     && let Some(tab) = tabs.iter().find(|t| t.id == target_id)
@@ -1099,6 +1261,20 @@ fn main() {
                     }
                 }
             }
+            Event::UserEvent(UserEvent::DownloadStarted { url, path }) => {
+                record_download_started(&mut downloads, &url, &path);
+                save_downloads(&downloads_path, &downloads);
+                for tab in &tabs {
+                    sync_downloads_to_tab(tab, &downloads);
+                }
+            }
+            Event::UserEvent(UserEvent::DownloadCompleted { url, path, success }) => {
+                record_download_completed(&mut downloads, &url, path, success);
+                save_downloads(&downloads_path, &downloads);
+                for tab in &tabs {
+                    sync_downloads_to_tab(tab, &downloads);
+                }
+            }
             Event::UserEvent(UserEvent::ClearHistory) => {
                 if !recent_sites.is_empty() {
                     recent_sites.clear();
@@ -1106,6 +1282,15 @@ fn main() {
                     for tab in &tabs {
                         sync_recent_sites_to_tab(tab, &recent_sites);
                         sync_history_to_tab(tab, &recent_sites);
+                    }
+                }
+            }
+            Event::UserEvent(UserEvent::ClearDownloads) => {
+                if !downloads.is_empty() {
+                    downloads.clear();
+                    save_downloads(&downloads_path, &downloads);
+                    for tab in &tabs {
+                        sync_downloads_to_tab(tab, &downloads);
                     }
                 }
             }
@@ -1201,11 +1386,13 @@ fn main() {
                             sync_recent_sites_to_tab(tab, &recent_sites);
                             sync_bookmarks_to_tab(tab, &bookmarks);
                             sync_history_to_tab(tab, &recent_sites);
+                            sync_downloads_to_tab(tab, &downloads);
                         }
                     } else if let Some(home_tab) = tabs.get(index) {
                         sync_recent_sites_to_tab(home_tab, &recent_sites);
                         sync_bookmarks_to_tab(home_tab, &bookmarks);
                         sync_history_to_tab(home_tab, &recent_sites);
+                        sync_downloads_to_tab(home_tab, &downloads);
                     }
 
                     if chrome_ready {
@@ -1232,12 +1419,14 @@ fn main() {
                             sync_recent_sites_to_tab(tab, &recent_sites);
                             sync_bookmarks_to_tab(tab, &bookmarks);
                             sync_history_to_tab(tab, &recent_sites);
+                            sync_downloads_to_tab(tab, &downloads);
                         }
                     }
 
                     if let Some(tab) = tabs.get(index) {
                         sync_bookmarks_to_tab(tab, &bookmarks);
                         sync_history_to_tab(tab, &recent_sites);
+                        sync_downloads_to_tab(tab, &downloads);
                     }
 
                     if chrome_ready {
@@ -1308,11 +1497,13 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::BookmarkSite;
+    use super::DownloadEntry;
     use super::RecentSite;
     use super::{
         fallback_title_for_url, is_background_google_account_sync_url, normalize_user_input_url,
-        resolved_tab_title, should_open_auth_window, should_track_recent_site,
-        should_warmup_youtube_account_sync, upsert_bookmark, upsert_recent_site,
+        record_download_completed, record_download_started, resolved_tab_title,
+        should_open_auth_window, should_track_recent_site, should_warmup_youtube_account_sync,
+        upsert_bookmark, upsert_recent_site,
     };
 
     #[test]
@@ -1438,5 +1629,24 @@ mod tests {
             "GitHub - Build software better"
         ));
         assert_eq!(bookmarks[0].url, "https://github.com");
+    }
+
+    #[test]
+    fn records_download_start_and_completion_status() {
+        let mut downloads: Vec<DownloadEntry> = Vec::new();
+        record_download_started(
+            &mut downloads,
+            "https://example.com/file.zip",
+            "/tmp/file.zip",
+        );
+        assert_eq!(downloads[0].status, "in_progress");
+
+        record_download_completed(
+            &mut downloads,
+            "https://example.com/file.zip",
+            Some("/tmp/file.zip".to_string()),
+            true,
+        );
+        assert_eq!(downloads[0].status, "completed");
     }
 }
