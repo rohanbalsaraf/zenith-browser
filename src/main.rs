@@ -1,143 +1,521 @@
-use reqwest::Url;
+use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
+use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
-use std::io::Read;
+use std::path::PathBuf;
+use std::sync::Arc;
 use tao::{
     dpi::LogicalSize,
     event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoopBuilder},
-    window::WindowBuilder,
+    event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy},
+    window::{Window, WindowBuilder},
 };
+use url::Url;
 use wry::{
-    WebViewBuilder,
-    http::{Request, Response, Uri, header},
+    PageLoadEvent, Rect, WebContext, WebView, WebViewBuilder,
+    dpi::{LogicalPosition, LogicalSize as WryLogicalSize},
+    http::{Request, Response, header},
 };
+
+const CHROME_HEIGHT: u32 = 82;
+const HOME_URL: &str = "zenith://assets/home";
+const SETTINGS_URL: &str = "zenith://assets/settings";
 
 enum UserEvent {
-    UpdateAddressBar(String),
-    NewTab,
-    Navigate(String),
+    ChromeReady,
+    NewTab {
+        url: Option<String>,
+        activate: bool,
+    },
+    SwitchTab(u32),
+    CloseTab(Option<u32>),
+    NavigateTab {
+        tab_id: Option<u32>,
+        url: String,
+    },
+    TabAction {
+        tab_id: Option<u32>,
+        action: BrowserAction,
+    },
+    OpenSettingsTab,
+    OpenAuthWindow(String),
+    TabUrlChanged {
+        tab_id: u32,
+        url: String,
+    },
+    TabTitleChanged {
+        tab_id: u32,
+        title: String,
+    },
+    SettingsChanged {
+        key: String,
+        value: String,
+    },
 }
 
-fn is_supported_target_scheme(scheme: &str) -> bool {
-    matches!(scheme, "http" | "https")
+#[derive(Clone, Copy)]
+enum BrowserAction {
+    Back,
+    Forward,
+    Reload,
 }
 
-fn default_port_for_scheme(scheme: &str) -> u16 {
-    match scheme {
-        "http" => 80,
-        "https" => 443,
-        _ => 0,
-    }
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct IpcMessage {
+    #[serde(rename = "type")]
+    message_type: String,
+    #[serde(default)]
+    tab_id: Option<u32>,
+    #[serde(default)]
+    url: Option<String>,
+    #[serde(default)]
+    action: Option<String>,
+    #[serde(default)]
+    key: Option<String>,
+    #[serde(default)]
+    value: Option<String>,
 }
 
-fn decode_proxy_host(host: &str) -> Option<(String, String, u16)> {
-    let parts: Vec<&str> = host.split('.').collect();
-    if parts.len() < 4 || parts.last().copied()? != "z" {
-        return None;
-    }
-
-    let scheme = parts[0];
-    if !is_supported_target_scheme(scheme) {
-        return None;
-    }
-
-    let port = parts[parts.len() - 2].parse::<u16>().ok()?;
-    let target_host = parts[1..parts.len() - 2].join(".");
-    if target_host.is_empty() {
-        return None;
-    }
-
-    Some((scheme.to_string(), target_host, port))
+struct BrowserTab {
+    id: u32,
+    url: String,
+    title: String,
+    webview: WebView,
 }
 
-fn extract_legacy_target_url(uri: &Uri) -> Option<Url> {
-    let query = uri.query()?;
-    for pair in query.split('&') {
-        if let Some(encoded) = pair.strip_prefix("url=") {
-            let decoded = percent_encoding::percent_decode_str(encoded)
-                .decode_utf8()
-                .ok()?;
-            let parsed = Url::parse(decoded.as_ref()).ok()?;
-            if is_supported_target_scheme(parsed.scheme()) {
-                return Some(parsed);
-            }
-        }
-    }
-    None
+struct AuthWindow {
+    window: Window,
+    _webview: WebView,
 }
 
-fn extract_target_url(uri: &Uri) -> Option<Url> {
-    let host = uri.host()?;
-
-    if host == "proxy" {
-        return extract_legacy_target_url(uri);
-    }
-
-    let (scheme, target_host, port) = decode_proxy_host(host)?;
-    let mut target = format!("{}://{}", scheme, target_host);
-    if port != default_port_for_scheme(&scheme) {
-        target.push(':');
-        target.push_str(&port.to_string());
-    }
-    target.push_str(uri.path());
-    if let Some(query) = uri.query() {
-        target.push('?');
-        target.push_str(query);
-    }
-
-    let parsed = Url::parse(&target).ok()?;
-    if !is_supported_target_scheme(parsed.scheme()) {
-        return None;
-    }
-    Some(parsed)
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChromeTabState {
+    id: u32,
+    title: String,
+    url: String,
 }
 
-fn is_excluded_request_header(name: &str) -> bool {
-    matches!(
-        name,
-        "host"
-            | "content-length"
-            | "connection"
-            | "upgrade"
-            | "proxy-authenticate"
-            | "proxy-authorization"
-            | "te"
-            | "trailer"
-            | "transfer-encoding"
-            | "cookie"
-            | "origin"
-            | "referer"
-            | "sec-fetch-site"
-            | "sec-fetch-mode"
-            | "sec-fetch-dest"
-            | "sec-fetch-user"
-            | "sec-ch-ua"
-            | "sec-ch-ua-mobile"
-            | "sec-ch-ua-platform"
-    )
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChromeState {
+    tabs: Vec<ChromeTabState>,
+    active_id: Option<u32>,
 }
 
 fn is_http_like_url(url: &str) -> bool {
     url.starts_with("http://") || url.starts_with("https://")
 }
 
-fn origin_for_target_url(url: &Url) -> String {
-    let scheme = url.scheme();
-    let host = url.host_str().unwrap_or_default();
-    let port = url
-        .port_or_known_default()
-        .unwrap_or_else(|| default_port_for_scheme(scheme));
-    let default_port = default_port_for_scheme(scheme);
-    if port != 0 && port != default_port {
-        format!("{scheme}://{host}:{port}")
+fn is_assets_url(url: &str) -> bool {
+    url.starts_with("zenith://assets/") || url == "zenith://assets"
+}
+
+fn profile_directory() -> PathBuf {
+    if let Some(home) = std::env::var_os("HOME") {
+        PathBuf::from(home).join(".zenith").join("profile")
     } else {
-        format!("{scheme}://{host}")
+        std::env::temp_dir().join("zenith-profile")
     }
+}
+
+fn fallback_title_for_url(raw_url: &str) -> String {
+    if raw_url.starts_with(SETTINGS_URL) {
+        return "Settings".to_string();
+    }
+    if raw_url.starts_with(HOME_URL) {
+        return "New Tab".to_string();
+    }
+
+    if let Ok(url) = Url::parse(raw_url)
+        && let Some(host) = url.host_str()
+    {
+        let host = host.strip_prefix("www.").unwrap_or(host);
+        if !host.is_empty() {
+            return host.to_string();
+        }
+    }
+
+    "Zenith".to_string()
+}
+
+fn normalize_user_input_url(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return HOME_URL.to_string();
+    }
+
+    if trimmed.starts_with("zenith://") || is_http_like_url(trimmed) {
+        return trimmed.to_string();
+    }
+
+    if trimmed.contains('.') && !trimmed.contains(' ') {
+        return format!("https://{trimmed}");
+    }
+
+    let q = utf8_percent_encode(trimmed, NON_ALPHANUMERIC).to_string();
+    format!("https://www.google.com/search?q={q}")
+}
+
+fn is_auth_host(host: &str) -> bool {
+    matches!(
+        host,
+        "accounts.google.com"
+            | "oauth2.googleapis.com"
+            | "github.com"
+            | "gitlab.com"
+            | "bitbucket.org"
+            | "login.live.com"
+            | "account.microsoft.com"
+            | "login.microsoftonline.com"
+            | "appleid.apple.com"
+            | "id.twitch.tv"
+            | "discord.com"
+            | "slack.com"
+            | "auth.openai.com"
+            | "www.facebook.com"
+            | "m.facebook.com"
+            | "www.instagram.com"
+            | "x.com"
+            | "twitter.com"
+            | "www.linkedin.com"
+    )
+}
+
+fn has_auth_markers(url: &Url) -> bool {
+    let path = url.path().to_ascii_lowercase();
+    let query = url.query().unwrap_or_default().to_ascii_lowercase();
+    let combined = format!("{path}?{query}");
+
+    [
+        "oauth",
+        "authorize",
+        "signin",
+        "login",
+        "consent",
+        "accountchooser",
+        "servicelogin",
+        "sso",
+        "2fa",
+        "mfa",
+        "challenge",
+        "checkpoint",
+    ]
+    .iter()
+    .any(|m| combined.contains(m))
+}
+
+fn looks_like_oauth_exchange(url: &Url) -> bool {
+    let query = url.query().unwrap_or_default().to_ascii_lowercase();
+    (query.contains("client_id=") || query.contains("appid=") || query.contains("scope="))
+        && (query.contains("redirect_uri=")
+            || query.contains("response_type=")
+            || query.contains("code_challenge="))
+}
+
+fn should_open_auth_window(raw_url: &str) -> bool {
+    let Ok(url) = Url::parse(raw_url) else {
+        return false;
+    };
+
+    let scheme = url.scheme().to_ascii_lowercase();
+    if scheme != "http" && scheme != "https" {
+        return false;
+    }
+
+    let host = url.host_str().unwrap_or_default().to_ascii_lowercase();
+    if host.is_empty() {
+        return false;
+    }
+
+    if is_auth_host(&host) {
+        return true;
+    }
+
+    if host.starts_with("accounts.") || host.starts_with("auth.") || host.starts_with("login.") {
+        return true;
+    }
+
+    if host.contains("oauth") {
+        return true;
+    }
+
+    has_auth_markers(&url) && looks_like_oauth_exchange(&url)
+}
+
+fn chrome_bounds_for_window(window: &Window) -> Rect {
+    let size = window.inner_size().to_logical::<u32>(window.scale_factor());
+    let height = CHROME_HEIGHT.min(size.height.max(1));
+    Rect {
+        position: LogicalPosition::new(0, 0).into(),
+        size: WryLogicalSize::new(size.width.max(1), height).into(),
+    }
+}
+
+fn content_bounds_for_window(window: &Window) -> Rect {
+    let size = window.inner_size().to_logical::<u32>(window.scale_factor());
+    let y = CHROME_HEIGHT.min(size.height);
+    let height = size.height.saturating_sub(y).max(1);
+    Rect {
+        position: LogicalPosition::new(0, y).into(),
+        size: WryLogicalSize::new(size.width.max(1), height).into(),
+    }
+}
+
+fn handle_zenith_request(ui_html: &str, request: Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {
+    let uri = request.uri();
+    let host = uri.host().unwrap_or_default();
+    let path = uri.path();
+
+    if host == "assets" && (path == "/ui" || path == "/ui/") {
+        return Response::builder()
+            .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+            .body(Cow::Owned(ui_html.as_bytes().to_vec()))
+            .unwrap();
+    }
+
+    if host == "assets" && (path == "/home" || path == "/home/") {
+        return Response::builder()
+            .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+            .body(Cow::Owned(include_bytes!("ui/home.html").to_vec()))
+            .unwrap();
+    }
+
+    if host == "assets" && (path == "/settings" || path == "/settings/") {
+        return Response::builder()
+            .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+            .body(Cow::Owned(include_bytes!("ui/settings.html").to_vec()))
+            .unwrap();
+    }
+
+    Response::builder()
+        .status(404)
+        .body(Cow::Borrowed(&[][..]))
+        .unwrap()
+}
+
+fn tab_initialization_script(tab_id: u32) -> String {
+    format!(
+        r#"
+        (function() {{
+            window.__ZENITH_TAB_ID = {tab_id};
+            var send = function(payload) {{
+                try {{ window.ipc.postMessage(JSON.stringify(payload)); }} catch (_) {{}}
+            }};
+            var notifyUrl = function() {{
+                send({{ type: 'tab_url_update', tabId: {tab_id}, url: window.location.href }});
+            }};
+
+            var wrapHistoryMethod = function(name) {{
+                try {{
+                    var original = history[name];
+                    if (!original) return;
+                    history[name] = function() {{
+                        var result = original.apply(history, arguments);
+                        notifyUrl();
+                        return result;
+                    }};
+                }} catch (_) {{}}
+            }};
+
+            wrapHistoryMethod('pushState');
+            wrapHistoryMethod('replaceState');
+            window.addEventListener('popstate', notifyUrl);
+            window.addEventListener('hashchange', notifyUrl);
+
+            if (document.readyState === 'loading') {{
+                document.addEventListener('DOMContentLoaded', notifyUrl, {{ once: true }});
+            }} else {{
+                notifyUrl();
+            }}
+        }})();
+        "#
+    )
+}
+
+fn apply_tab_visibility(tabs: &[BrowserTab], active_tab_id: Option<u32>) {
+    for tab in tabs {
+        let _ = tab.webview.set_visible(Some(tab.id) == active_tab_id);
+    }
+}
+
+fn apply_tab_bounds(tabs: &[BrowserTab], bounds: Rect) {
+    for tab in tabs {
+        let _ = tab.webview.set_bounds(bounds);
+    }
+}
+
+fn sync_chrome_state(chrome: &WebView, tabs: &[BrowserTab], active_tab_id: Option<u32>) {
+    let state = ChromeState {
+        tabs: tabs
+            .iter()
+            .map(|t| ChromeTabState {
+                id: t.id,
+                title: t.title.clone(),
+                url: t.url.clone(),
+            })
+            .collect(),
+        active_id: active_tab_id,
+    };
+
+    if let Ok(json) = serde_json::to_string(&state) {
+        let js = format!("if(window.zenithSetState) window.zenithSetState({json});");
+        let _ = chrome.evaluate_script(&js);
+    }
+}
+
+fn dispatch_ipc_message(
+    raw: &str,
+    proxy: &EventLoopProxy<UserEvent>,
+    fallback_tab_id: Option<u32>,
+) {
+    let Ok(message) = serde_json::from_str::<IpcMessage>(raw) else {
+        return;
+    };
+
+    let tab_id = message.tab_id.or(fallback_tab_id);
+
+    match message.message_type.as_str() {
+        "chrome_ready" => {
+            let _ = proxy.send_event(UserEvent::ChromeReady);
+        }
+        "new_tab" => {
+            let _ = proxy.send_event(UserEvent::NewTab {
+                url: message.url,
+                activate: true,
+            });
+        }
+        "switch_tab" => {
+            if let Some(id) = tab_id {
+                let _ = proxy.send_event(UserEvent::SwitchTab(id));
+            }
+        }
+        "close_tab" => {
+            let _ = proxy.send_event(UserEvent::CloseTab(tab_id));
+        }
+        "navigate" => {
+            if let Some(url) = message.url {
+                let _ = proxy.send_event(UserEvent::NavigateTab { tab_id, url });
+            }
+        }
+        "tab_action" => {
+            let action = match message.action.as_deref() {
+                Some("back") => Some(BrowserAction::Back),
+                Some("forward") => Some(BrowserAction::Forward),
+                Some("reload") => Some(BrowserAction::Reload),
+                _ => None,
+            };
+            if let Some(action) = action {
+                let _ = proxy.send_event(UserEvent::TabAction { tab_id, action });
+            }
+        }
+        "open_settings_tab" => {
+            let _ = proxy.send_event(UserEvent::OpenSettingsTab);
+        }
+        "open_auth" => {
+            if let Some(url) = message.url {
+                let _ = proxy.send_event(UserEvent::OpenAuthWindow(url));
+            }
+        }
+        "tab_url_update" => {
+            if let (Some(id), Some(url)) = (tab_id, message.url) {
+                let _ = proxy.send_event(UserEvent::TabUrlChanged { tab_id: id, url });
+            }
+        }
+        "settings-change" | "settings_change" => {
+            if let (Some(key), Some(value)) = (message.key, message.value) {
+                let _ = proxy.send_event(UserEvent::SettingsChanged { key, value });
+            }
+        }
+        "settings-action" => {
+            if message.action.as_deref() == Some("reset") {
+                let _ = proxy.send_event(UserEvent::SettingsChanged {
+                    key: "theme".to_string(),
+                    value: "dark".to_string(),
+                });
+                let _ = proxy.send_event(UserEvent::SettingsChanged {
+                    key: "searchEngine".to_string(),
+                    value: "google".to_string(),
+                });
+            }
+        }
+        _ => {}
+    }
+}
+
+fn build_browser_tab(
+    window: &Window,
+    web_context: &mut WebContext,
+    tab_id: u32,
+    url: &str,
+    bounds: Rect,
+    proxy: &EventLoopProxy<UserEvent>,
+    ui_html: Arc<String>,
+) -> Option<BrowserTab> {
+    let nav_proxy = proxy.clone();
+    let popup_proxy = proxy.clone();
+    let title_proxy = proxy.clone();
+    let load_proxy = proxy.clone();
+    let ipc_proxy = proxy.clone();
+    let protocol_html = ui_html;
+    let init_script = tab_initialization_script(tab_id);
+
+    let webview = WebViewBuilder::new_with_web_context(web_context)
+        .with_bounds(bounds)
+        .with_url(url)
+        .with_initialization_script(&init_script)
+        .with_navigation_handler(move |next| {
+            if should_open_auth_window(&next) {
+                let _ = nav_proxy.send_event(UserEvent::OpenAuthWindow(next));
+                return false;
+            }
+
+            if next.starts_with("zenith://") {
+                return is_assets_url(&next);
+            }
+
+            true
+        })
+        .with_new_window_req_handler(move |next, _features| {
+            if should_open_auth_window(&next) {
+                let _ = popup_proxy.send_event(UserEvent::OpenAuthWindow(next));
+            } else if is_http_like_url(&next) || is_assets_url(&next) {
+                let _ = popup_proxy.send_event(UserEvent::NewTab {
+                    url: Some(next),
+                    activate: true,
+                });
+            }
+            wry::NewWindowResponse::Deny
+        })
+        .with_document_title_changed_handler(move |title| {
+            let _ = title_proxy.send_event(UserEvent::TabTitleChanged { tab_id, title });
+        })
+        .with_on_page_load_handler(move |_event: PageLoadEvent, url| {
+            let _ = load_proxy.send_event(UserEvent::TabUrlChanged { tab_id, url });
+        })
+        .with_ipc_handler(move |request: Request<String>| {
+            dispatch_ipc_message(request.body(), &ipc_proxy, Some(tab_id));
+        })
+        .with_custom_protocol("zenith".into(), move |_id, request: Request<Vec<u8>>| {
+            handle_zenith_request(protocol_html.as_str(), request)
+        })
+        .build_as_child(window)
+        .ok()?;
+
+    Some(BrowserTab {
+        id: tab_id,
+        url: url.to_string(),
+        title: fallback_title_for_url(url),
+        webview,
+    })
 }
 
 fn main() {
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
     let proxy = event_loop.create_proxy();
+
+    let profile_dir = profile_directory();
+    let mut web_context = WebContext::new(Some(profile_dir.join("webview")));
 
     let window = WindowBuilder::new()
         .with_title("Zenith")
@@ -147,360 +525,313 @@ fn main() {
 
     let ui_html = include_str!("ui/ui.html");
     let ui_css = include_str!("ui/ui.css");
-    let home_html = include_bytes!("ui/home.html");
-    let settings_html = include_bytes!("ui/settings.html");
-    let http_client = reqwest::blocking::Client::builder()
-        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-        .redirect(reqwest::redirect::Policy::limited(10))
-        .cookie_store(true)
-        .build()
-        .unwrap();
-
-    // Unified Architecture: All assets on zenith://assets/...
-    let final_ui_html = ui_html.replace(
+    let final_ui_html = Arc::new(ui_html.replace(
         "<link rel=\"stylesheet\" href=\"ui.css\">",
         &format!("<style>{}</style>", ui_css),
-    );
+    ));
 
-    let init_script = r#"
-        (function() {
-            var send = function(data) { try { window.ipc.postMessage(JSON.stringify(data)); } catch(e) {} };
-
-            var fromProxyUrl = function(raw) {
-                try {
-                    var u = new URL(raw);
-                    if (u.protocol !== 'zenith:') return raw;
-                    var host = u.hostname || '';
-                    var parts = host.split('.');
-                    if (parts.length < 4 || parts[parts.length - 1] !== 'z') return raw;
-                    var scheme = parts[0];
-                    if (scheme !== 'http' && scheme !== 'https') return raw;
-                    var port = parts[parts.length - 2];
-                    var targetHost = parts.slice(1, -2).join('.');
-                    if (!targetHost) return raw;
-                    var defaultPort = scheme === 'https' ? '443' : '80';
-                    var portPart = (port && port !== defaultPort) ? (':' + port) : '';
-                    return scheme + '://' + targetHost + portPart + (u.pathname || '/') + (u.search || '') + (u.hash || '');
-                } catch(_) {
-                    return raw;
-                }
-            };
-
-            var toProxyUrl = function(raw) {
-                try {
-                    var base = fromProxyUrl(window.location.href);
-                    var u = new URL(raw, base);
-                    if (u.protocol !== 'http:' && u.protocol !== 'https:') return raw;
-                    var port = u.port || (u.protocol === 'https:' ? '443' : '80');
-                    return 'zenith://' + u.protocol.slice(0, -1) + '.' + u.hostname + '.' + port + '.z' + (u.pathname || '/') + (u.search || '') + (u.hash || '');
-                } catch(_) {
-                    return raw;
-                }
-            };
-
-            var rewriteElementUrl = function(el, attr) {
-                try {
-                    if (!el || !el.getAttribute) return;
-                    var value = el.getAttribute(attr);
-                    if (!value) return;
-                    var proxied = toProxyUrl(value);
-                    if (proxied !== value) el.setAttribute(attr, proxied);
-                } catch(_) {}
-            };
-
-            var rewriteTree = function(root) {
-                if (!root || !root.querySelectorAll) return;
-                var selectors = [
-                    'a[href]',
-                    'form[action]',
-                    'img[src]',
-                    'script[src]',
-                    'link[href]',
-                    'source[src]',
-                    'video[src]',
-                    'audio[src]',
-                    'iframe[src]'
-                ];
-                var nodes = root.querySelectorAll(selectors.join(','));
-                for (var i = 0; i < nodes.length; i++) {
-                    var el = nodes[i];
-                    if (el.hasAttribute('href')) rewriteElementUrl(el, 'href');
-                    if (el.hasAttribute('src')) rewriteElementUrl(el, 'src');
-                    if (el.hasAttribute('action')) rewriteElementUrl(el, 'action');
-                }
-            };
-            
-            // 1. History Interceptor (SPA)
-            var hook = function() { send({type:'update_address_bar', url: fromProxyUrl(window.location.href)}); };
-            var op = history.pushState; if(op) history.pushState = function(){ op.apply(history, arguments); hook(); };
-            var or = history.replaceState; if(or) history.replaceState = function(){ or.apply(history, arguments); hook(); };
-            window.addEventListener('popstate', hook);
-
-            // 1b. Intercept fetch / XHR so API calls stay on proxy origin.
-            var nativeFetch = window.fetch;
-            if (nativeFetch) {
-                window.fetch = function(input, init) {
-                    try {
-                        if (typeof input === 'string') {
-                            input = toProxyUrl(input);
-                        } else if (input && input.url) {
-                            var nextUrl = toProxyUrl(input.url);
-                            if (nextUrl !== input.url && typeof Request !== 'undefined') {
-                                input = new Request(nextUrl, input);
-                            }
-                        }
-                    } catch (_) {}
-                    return nativeFetch.call(this, input, init);
-                };
-            }
-
-            var nativeOpen = XMLHttpRequest.prototype.open;
-            XMLHttpRequest.prototype.open = function(method, url) {
-                try { url = toProxyUrl(String(url)); } catch (_) {}
-                return nativeOpen.apply(this, arguments.length > 2
-                    ? [method, url, arguments[2], arguments[3], arguments[4]]
-                    : [method, url]);
-            };
-
-            // 2. Click Interceptor
-            window.addEventListener('click', function(e) {
-                var a = e.target.closest('a[href]');
-                if (!a || !a.href) return;
-                var next = toProxyUrl(a.href);
-                if (next !== a.href) {
-                    e.preventDefault();
-                    window.location.href = next;
-                }
-            }, true);
-
-            // 3. Form Interceptor
-            window.addEventListener('submit', function(e) {
-                var form = e.target;
-                if (!form || !form.action) return;
-                var next = toProxyUrl(form.action);
-                if (next !== form.action) {
-                    form.action = next;
-                }
-            }, true);
-
-            // 4. Rewrite existing and dynamic DOM URL attributes.
-            var domReady = function() {
-                rewriteTree(document);
-                var observer = new MutationObserver(function(mutations) {
-                    for (var i = 0; i < mutations.length; i++) {
-                        var m = mutations[i];
-                        if (m.type === 'attributes' && m.target) {
-                            rewriteElementUrl(m.target, m.attributeName);
-                        } else if (m.type === 'childList') {
-                            for (var j = 0; j < m.addedNodes.length; j++) {
-                                var node = m.addedNodes[j];
-                                if (node && node.nodeType === 1) {
-                                    rewriteTree(node);
-                                }
-                            }
-                        }
-                    }
-                });
-                observer.observe(document.documentElement || document, {
-                    subtree: true,
-                    childList: true,
-                    attributes: true,
-                    attributeFilter: ['href', 'src', 'action']
-                });
-            };
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', domReady, { once: true });
-            } else {
-                domReady();
-            }
-
-            hook();
-        })();
-    "#;
-
-    // Build the WebView
-    let nav_proxy = proxy.clone();
-    let popup_proxy = proxy.clone();
-    let webview = WebViewBuilder::new()
+    let chrome_proxy = proxy.clone();
+    let chrome_protocol_html = final_ui_html.clone();
+    let chrome_webview = WebViewBuilder::new_with_web_context(&mut web_context)
+        .with_bounds(chrome_bounds_for_window(&window))
         .with_url("zenith://assets/ui")
-        .with_initialization_script(init_script)
-        .with_navigation_handler(move |url| {
-            if is_http_like_url(&url) {
-                let _ = nav_proxy.send_event(UserEvent::Navigate(url));
-                return false;
-            }
-            true
-        })
-        .with_new_window_req_handler(move |url, _features| {
-            if is_http_like_url(&url) || url.starts_with("zenith://") {
-                let _ = popup_proxy.send_event(UserEvent::Navigate(url));
-            }
-            wry::NewWindowResponse::Deny
-        })
+        .with_navigation_handler(|url| is_assets_url(&url))
         .with_custom_protocol("zenith".into(), move |_id, request: Request<Vec<u8>>| {
-            let uri = request.uri();
-            let host = uri.host().unwrap_or_default();
-            let path = uri.path();
-
-            // 1. Serve UI Assets
-            if host == "assets" && (path == "/ui" || path == "/ui/") {
-                return Response::builder()
-                    .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
-                    .body(Cow::Owned(final_ui_html.as_bytes().to_vec()))
-                    .unwrap();
-            }
-            if host == "assets" && (path == "/home" || path == "/home/") {
-                return Response::builder()
-                    .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
-                    .body(Cow::Borrowed(home_html as &[u8]))
-                    .unwrap();
-            }
-            if host == "assets" && (path == "/settings" || path == "/settings/") {
-                return Response::builder()
-                    .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
-                    .body(Cow::Borrowed(settings_html as &[u8]))
-                    .unwrap();
-            }
-
-            // 2. Serve Proxy Content
-            if request.method() == "OPTIONS" {
-                return Response::builder()
-                    .status(204)
-                    .header("Access-Control-Allow-Origin", "*")
-                    .header("Access-Control-Allow-Headers", "*")
-                    .header(
-                        "Access-Control-Allow-Methods",
-                        "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-                    )
-                    .body(Cow::Borrowed(&[][..]))
-                    .unwrap();
-            }
-
-            if let Some(target_url) = extract_target_url(uri) {
-                let req_method = reqwest::Method::from_bytes(request.method().as_str().as_bytes())
-                    .unwrap_or(reqwest::Method::GET);
-
-                let mut outbound = http_client.request(req_method, target_url.clone());
-                let target_origin = origin_for_target_url(&target_url);
-                outbound = outbound
-                    .header("origin", target_origin.clone())
-                    .header("referer", format!("{}/", target_origin));
-
-                for (name, value) in request.headers() {
-                    let lower = name.as_str().to_ascii_lowercase();
-                    if is_excluded_request_header(&lower) {
-                        continue;
-                    }
-                    if let Ok(v) = value.to_str() {
-                        outbound = outbound.header(name.as_str(), v);
-                    }
-                }
-
-                if !request.body().is_empty() {
-                    outbound = outbound.body(request.body().clone());
-                }
-
-                if let Ok(mut resp) = outbound.send() {
-                    let status = resp.status().as_u16();
-                    let mut body = Vec::new();
-                    let _ = resp.read_to_end(&mut body);
-
-                    let mime = resp
-                        .headers()
-                        .get("content-type")
-                        .and_then(|v| v.to_str().ok())
-                        .unwrap_or("application/octet-stream")
-                        .to_string();
-
-                    return Response::builder()
-                        .status(status)
-                        .header(header::CONTENT_TYPE, mime)
-                        .header("Access-Control-Allow-Origin", "*")
-                        .header("Access-Control-Allow-Headers", "*")
-                        .header(
-                            "Access-Control-Allow-Methods",
-                            "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-                        )
-                        .header("X-Frame-Options", "ALLOWALL")
-                        .body(Cow::Owned(body))
-                        .unwrap();
-                }
-            }
-            Response::builder()
-                .status(404)
-                .body(Cow::Borrowed(&[][..]))
-                .unwrap()
+            handle_zenith_request(chrome_protocol_html.as_str(), request)
         })
         .with_ipc_handler(move |request: Request<String>| {
-            let msg = request.body();
-            if let Ok(data) = serde_json::from_str::<serde_json::Value>(msg) {
-                if data["type"] == "update_address_bar" {
-                    let _ = proxy.send_event(UserEvent::UpdateAddressBar(
-                        data["url"].as_str().unwrap_or("").to_string(),
-                    ));
-                } else if data["type"] == "new_tab" {
-                    let _ = proxy.send_event(UserEvent::NewTab);
-                } else if data["type"] == "navigate" {
-                    let _ = proxy.send_event(UserEvent::Navigate(
-                        data["url"].as_str().unwrap_or("").to_string(),
-                    ));
-                }
-            }
+            dispatch_ipc_message(request.body(), &chrome_proxy, None);
         })
-        .build(&window)
+        .build_as_child(&window)
         .unwrap();
 
-    event_loop.run(move |event, _, control_flow| {
+    let mut tabs: Vec<BrowserTab> = Vec::new();
+    let mut next_tab_id: u32 = 1;
+    let mut active_tab_id: Option<u32> = None;
+    let mut chrome_ready = false;
+    let mut auth_windows: Vec<AuthWindow> = Vec::new();
+
+    if let Some(initial_tab) = build_browser_tab(
+        &window,
+        &mut web_context,
+        next_tab_id,
+        HOME_URL,
+        content_bounds_for_window(&window),
+        &proxy,
+        final_ui_html.clone(),
+    ) {
+        active_tab_id = Some(next_tab_id);
+        next_tab_id += 1;
+        tabs.push(initial_tab);
+        apply_tab_visibility(&tabs, active_tab_id);
+    }
+
+    event_loop.run(move |event, event_loop_target, control_flow| {
         *control_flow = ControlFlow::Wait;
+        let _keep_context_alive = &web_context;
+
         match event {
-            Event::UserEvent(UserEvent::UpdateAddressBar(url)) => {
-                let js_url = serde_json::to_string(&url).unwrap_or_else(|_| "\"\"".to_string());
-                let js = format!(
-                    "if(window.zenithUpdateAddressBar) window.zenithUpdateAddressBar({});",
-                    js_url
-                );
-                let _ = webview.evaluate_script(&js);
+            Event::UserEvent(UserEvent::ChromeReady) => {
+                chrome_ready = true;
+                sync_chrome_state(&chrome_webview, &tabs, active_tab_id);
             }
-            Event::UserEvent(UserEvent::NewTab) => {
-                let _ = webview.evaluate_script("if(window.zenithNewTab) window.zenithNewTab();");
+            Event::UserEvent(UserEvent::NewTab { url, activate }) => {
+                let mut start_url = normalize_user_input_url(url.as_deref().unwrap_or(HOME_URL));
+                if should_open_auth_window(&start_url) {
+                    let _ = proxy.send_event(UserEvent::OpenAuthWindow(start_url));
+                    start_url = HOME_URL.to_string();
+                }
+
+                if let Some(tab) = build_browser_tab(
+                    &window,
+                    &mut web_context,
+                    next_tab_id,
+                    &start_url,
+                    content_bounds_for_window(&window),
+                    &proxy,
+                    final_ui_html.clone(),
+                ) {
+                    tabs.push(tab);
+                    if activate || active_tab_id.is_none() {
+                        active_tab_id = Some(next_tab_id);
+                    }
+                    next_tab_id += 1;
+                    apply_tab_visibility(&tabs, active_tab_id);
+                    if chrome_ready {
+                        sync_chrome_state(&chrome_webview, &tabs, active_tab_id);
+                    }
+                }
             }
-            Event::UserEvent(UserEvent::Navigate(url)) => {
-                let js_url = serde_json::to_string(&url).unwrap_or_else(|_| "\"\"".to_string());
-                let js = format!(
-                    "if(window.zenithNavigate) window.zenithNavigate({});",
-                    js_url
-                );
-                let _ = webview.evaluate_script(&js);
+            Event::UserEvent(UserEvent::SwitchTab(tab_id)) => {
+                if tabs.iter().any(|t| t.id == tab_id) {
+                    active_tab_id = Some(tab_id);
+                    apply_tab_visibility(&tabs, active_tab_id);
+                    if chrome_ready {
+                        sync_chrome_state(&chrome_webview, &tabs, active_tab_id);
+                    }
+                }
+            }
+            Event::UserEvent(UserEvent::CloseTab(tab_id)) => {
+                if let Some(close_id) = tab_id.or(active_tab_id) {
+                    if tabs.len() <= 1 {
+                        if let Some(tab) = tabs.first_mut() {
+                            tab.url = HOME_URL.to_string();
+                            tab.title = fallback_title_for_url(HOME_URL);
+                            let _ = tab.webview.load_url(HOME_URL);
+                            active_tab_id = Some(tab.id);
+                        }
+                    } else if let Some(idx) = tabs.iter().position(|t| t.id == close_id) {
+                        tabs.remove(idx);
+                        if active_tab_id == Some(close_id) {
+                            let next_idx = idx.saturating_sub(1);
+                            active_tab_id = tabs.get(next_idx).map(|t| t.id);
+                        }
+                    }
+
+                    apply_tab_visibility(&tabs, active_tab_id);
+                    if chrome_ready {
+                        sync_chrome_state(&chrome_webview, &tabs, active_tab_id);
+                    }
+                }
+            }
+            Event::UserEvent(UserEvent::NavigateTab { tab_id, url }) => {
+                if let Some(target_id) = tab_id.or(active_tab_id) {
+                    let next_url = normalize_user_input_url(&url);
+                    if should_open_auth_window(&next_url) {
+                        let _ = proxy.send_event(UserEvent::OpenAuthWindow(next_url));
+                    } else if !(next_url.starts_with("zenith://") && !is_assets_url(&next_url)) {
+                        if let Some(tab) = tabs.iter_mut().find(|t| t.id == target_id) {
+                            tab.url = next_url.clone();
+                            tab.title = fallback_title_for_url(&next_url);
+                            let _ = tab.webview.load_url(&next_url);
+                            if chrome_ready {
+                                sync_chrome_state(&chrome_webview, &tabs, active_tab_id);
+                            }
+                        }
+                    }
+                }
+            }
+            Event::UserEvent(UserEvent::TabAction { tab_id, action }) => {
+                if let Some(target_id) = tab_id.or(active_tab_id) {
+                    if let Some(tab) = tabs.iter().find(|t| t.id == target_id) {
+                        match action {
+                            BrowserAction::Back => {
+                                let _ = tab.webview.evaluate_script("history.back();");
+                            }
+                            BrowserAction::Forward => {
+                                let _ = tab.webview.evaluate_script("history.forward();");
+                            }
+                            BrowserAction::Reload => {
+                                let _ = tab.webview.reload();
+                            }
+                        }
+                    }
+                }
+            }
+            Event::UserEvent(UserEvent::OpenSettingsTab) => {
+                if let Some(existing_id) = tabs
+                    .iter()
+                    .find(|t| t.url.starts_with(SETTINGS_URL))
+                    .map(|t| t.id)
+                {
+                    active_tab_id = Some(existing_id);
+                    apply_tab_visibility(&tabs, active_tab_id);
+                    if chrome_ready {
+                        sync_chrome_state(&chrome_webview, &tabs, active_tab_id);
+                    }
+                } else {
+                    let _ = proxy.send_event(UserEvent::NewTab {
+                        url: Some(SETTINGS_URL.to_string()),
+                        activate: true,
+                    });
+                }
+            }
+            Event::UserEvent(UserEvent::OpenAuthWindow(url)) => {
+                if is_http_like_url(&url) {
+                    let popup_proxy = proxy.clone();
+                    if let Ok(auth_window) = WindowBuilder::new()
+                        .with_title("Zenith Sign In")
+                        .with_inner_size(LogicalSize::new(980.0, 760.0))
+                        .build(event_loop_target)
+                        && let Ok(auth_webview) =
+                            WebViewBuilder::new_with_web_context(&mut web_context)
+                                .with_url(&url)
+                                .with_navigation_handler(|next| {
+                                    is_http_like_url(&next) || is_assets_url(&next)
+                                })
+                                .with_new_window_req_handler(move |next, _| {
+                                    if should_open_auth_window(&next) {
+                                        let _ =
+                                            popup_proxy.send_event(UserEvent::OpenAuthWindow(next));
+                                    } else if is_http_like_url(&next) || is_assets_url(&next) {
+                                        let _ = popup_proxy.send_event(UserEvent::NewTab {
+                                            url: Some(next),
+                                            activate: true,
+                                        });
+                                    }
+                                    wry::NewWindowResponse::Deny
+                                })
+                                .build(&auth_window)
+                    {
+                        auth_windows.push(AuthWindow {
+                            window: auth_window,
+                            _webview: auth_webview,
+                        });
+                    }
+                }
+            }
+            Event::UserEvent(UserEvent::TabUrlChanged { tab_id, url }) => {
+                if let Some(tab) = tabs.iter_mut().find(|t| t.id == tab_id) {
+                    let old_fallback = fallback_title_for_url(&tab.url);
+                    tab.url = url;
+                    if tab.title.trim().is_empty() || tab.title == "Zenith" || tab.title == old_fallback
+                    {
+                        tab.title = fallback_title_for_url(&tab.url);
+                    }
+                    if chrome_ready {
+                        sync_chrome_state(&chrome_webview, &tabs, active_tab_id);
+                    }
+                }
+            }
+            Event::UserEvent(UserEvent::TabTitleChanged { tab_id, title }) => {
+                if let Some(tab) = tabs.iter_mut().find(|t| t.id == tab_id) {
+                    let trimmed = title.trim();
+                    tab.title = if trimmed.is_empty() {
+                        fallback_title_for_url(&tab.url)
+                    } else {
+                        trimmed.to_string()
+                    };
+                    if chrome_ready {
+                        sync_chrome_state(&chrome_webview, &tabs, active_tab_id);
+                    }
+                }
+            }
+            Event::UserEvent(UserEvent::SettingsChanged { key, value }) => {
+                let normalized = match key.as_str() {
+                    "theme" => Some((
+                        "theme",
+                        if value.eq_ignore_ascii_case("light") {
+                            "light"
+                        } else {
+                            "dark"
+                        },
+                    )),
+                    "searchEngine" | "search-engine" => Some((
+                        "searchEngine",
+                        match value.as_str() {
+                            "duckduckgo" => "duckduckgo",
+                            "bing" => "bing",
+                            _ => "google",
+                        },
+                    )),
+                    _ => None,
+                };
+
+                if let Some((k, v)) = normalized
+                    && let (Ok(k_json), Ok(v_json)) =
+                        (serde_json::to_string(k), serde_json::to_string(v))
+                {
+                    let js = format!(
+                        "if(window.zenithApplySetting) window.zenithApplySetting({k_json}, {v_json});"
+                    );
+                    let _ = chrome_webview.evaluate_script(&js);
+                }
             }
             Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => *control_flow = ControlFlow::Exit,
-            _ => (),
+                window_id, event, ..
+            } => match event {
+                WindowEvent::CloseRequested if window_id == window.id() => {
+                    *control_flow = ControlFlow::Exit;
+                }
+                WindowEvent::CloseRequested => {
+                    auth_windows.retain(|w| w.window.id() != window_id);
+                }
+                WindowEvent::Resized(_size) if window_id == window.id() => {
+                    let _ = chrome_webview.set_bounds(chrome_bounds_for_window(&window));
+                    apply_tab_bounds(&tabs, content_bounds_for_window(&window));
+                }
+                _ => {}
+            },
+            _ => {}
         }
     });
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_proxy_host, extract_target_url};
-    use wry::http::Uri;
+    use super::{fallback_title_for_url, normalize_user_input_url, should_open_auth_window};
 
     #[test]
-    fn decode_proxy_host_parses_scheme_host_port() {
-        let parsed = decode_proxy_host("https.example.com.443.z");
+    fn normalize_user_input_uses_https_for_domains() {
         assert_eq!(
-            parsed,
-            Some(("https".to_string(), "example.com".to_string(), 443))
+            normalize_user_input_url("example.com"),
+            "https://example.com".to_string()
         );
     }
 
     #[test]
-    fn extract_target_url_preserves_path_query() {
-        let uri: Uri = "zenith://https.example.com.443.z/A/B/C?x=1&y=2"
-            .parse()
-            .expect("valid uri");
-        let target = extract_target_url(&uri).expect("target url should parse");
-        assert_eq!(target.as_str(), "https://example.com/A/B/C?x=1&y=2");
+    fn normalize_user_input_uses_google_for_queries() {
+        let out = normalize_user_input_url("rust browser project");
+        assert!(out.starts_with("https://www.google.com/search?q="));
+    }
+
+    #[test]
+    fn fallback_title_uses_hostname() {
+        assert_eq!(
+            fallback_title_for_url("https://www.youtube.com/watch?v=1"),
+            "youtube.com"
+        );
+    }
+
+    #[test]
+    fn auth_window_detects_known_auth_host() {
+        assert!(should_open_auth_window("https://github.com/login"));
+    }
+
+    #[test]
+    fn auth_window_detects_oauth_parameters() {
+        assert!(should_open_auth_window(
+            "https://example.com/authorize?client_id=a&redirect_uri=b&response_type=code"
+        ));
     }
 }

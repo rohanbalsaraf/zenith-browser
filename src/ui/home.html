@@ -187,9 +187,23 @@ function applyTheme(theme) {
 }
 applyTheme(localStorage.getItem('zenith-theme') || 'dark');
 
+function sendToHost(payload) {
+    const message = { ...payload };
+    if (typeof window.__ZENITH_TAB_ID === 'number') {
+        message.tabId = window.__ZENITH_TAB_ID;
+    }
+    try {
+        if (window.ipc && typeof window.ipc.postMessage === 'function') {
+            window.ipc.postMessage(JSON.stringify(message));
+            return;
+        }
+    } catch (_) {}
+    window.parent.postMessage(payload, '*');
+}
+
 // ── Navigate helper ───────────────────────────────────────────────────────────
 function go(url) {
-    window.parent.postMessage({ type: 'navigate', url }, '*');
+    sendToHost({ type: 'navigate', url });
 }
 
 // ── Search ────────────────────────────────────────────────────────────────────
@@ -253,8 +267,14 @@ window.addEventListener('message', e => {
     });
 });
 
-// Tell parent shell we're ready (so it can send recent-sites)
-window.parent.postMessage({ type: 'home-ready' }, '*');
+window.addEventListener('storage', e => {
+    if (e.key === 'zenith-theme') {
+        applyTheme(e.newValue || 'dark');
+    }
+});
+
+// Tell host shell we're ready.
+sendToHost({ type: 'home-ready' });
 </script>
 </body>
 </html>

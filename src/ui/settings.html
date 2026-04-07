@@ -305,6 +305,16 @@ const state = {
 };
 
 function send(payload) {
+    const message = { ...payload };
+    if (typeof window.__ZENITH_TAB_ID === 'number') {
+        message.tabId = window.__ZENITH_TAB_ID;
+    }
+    try {
+        if (window.ipc && typeof window.ipc.postMessage === 'function') {
+            window.ipc.postMessage(JSON.stringify(message));
+            return;
+        }
+    } catch (_) {}
     window.parent.postMessage(payload, '*');
 }
 
@@ -368,6 +378,16 @@ window.addEventListener('message', (e) => {
         const settings = e.data.settings || {};
         applyTheme(settings.theme || state.theme);
         applySearchEngine(settings.searchEngine || state.searchEngine);
+    }
+});
+
+window.addEventListener('storage', (e) => {
+    if (e.key === 'zenith-theme') {
+        applyTheme(e.newValue || 'dark');
+        return;
+    }
+    if (e.key === 'zenith-search-engine') {
+        applySearchEngine(e.newValue || 'google');
     }
 });
 
