@@ -162,37 +162,4 @@ body {
     pointer-events: none;
 }
 
-/* ── Settings menu ───────────────────────────────────────────────────────── */
-.settings-menu {
-    position: fixed; top: 76px; right: 12px; width: 220px; z-index: 1000;
-    background: var(--menu-bg); border: 1px solid var(--menu-border);
-    border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-    display: flex; flex-direction: column; padding: 6px;
-    animation: menuIn 0.2s cubic-bezier(0.16,1,0.3,1);
-    backdrop-filter: blur(16px);
-}
-.settings-menu.hidden { display: none; }
-
-@keyframes menuIn {
-    from { opacity: 0; transform: translateY(-8px) scale(0.98); }
-    to   { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-.menu-item {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 14px; font-size: 13px; font-weight: 500;
-    color: var(--text-primary); border-radius: 8px; cursor: pointer;
-    transition: background 0.1s, transform 0.1s; gap: 10px;
-}
-.menu-item:hover { background: var(--menu-hover); }
-.menu-item:active { transform: scale(0.98); }
-
-.menu-item-left { display: flex; align-items: center; gap: 10px; }
-.menu-item-icon { width: 16px; height: 16px; opacity: 0.7; }
-.menu-item:hover .menu-item-icon { opacity: 1; }
-
-.menu-kbd {
-    font-size: 11px; color: var(--text-muted); opacity: 0.8; margin-left: 2px;
-}
-
 .hidden { display: none !important; }

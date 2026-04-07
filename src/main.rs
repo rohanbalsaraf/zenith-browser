@@ -16,6 +16,8 @@ use wry::{
     dpi::{LogicalPosition, LogicalSize as WryLogicalSize},
     http::{Request, Response, header},
 };
+#[cfg(target_os = "macos")]
+use tao::platform::macos::WindowExtMacOS;
 
 const CHROME_HEIGHT: u32 = 82;
 const CUSTOM_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Edg/122.0.0.0";
@@ -69,7 +71,7 @@ enum UserEvent {
         path: Option<String>,
         success: bool,
     },
-    ToggleMenu(bool),
+    ShowThreeDotsMenu { x: f64, y: f64 },
 }
 
 #[derive(Clone, Copy)]
@@ -96,6 +98,10 @@ struct IpcMessage {
     value: Option<String>,
     #[serde(default)]
     open: Option<bool>,
+    #[serde(default)]
+    x: Option<f64>,
+    #[serde(default)]
+    y: Option<f64>,
 }
 
 struct BrowserTab {
@@ -972,9 +978,9 @@ fn dispatch_ipc_message(
         "clear_downloads" => {
             let _ = proxy.send_event(UserEvent::ClearDownloads);
         }
-        "toggle_menu" => {
-            if let Some(open) = message.open {
-                let _ = proxy.send_event(UserEvent::ToggleMenu(open));
+        "show_context_menu" => {
+            if let (Some(x), Some(y)) = (message.x, message.y) {
+                let _ = proxy.send_event(UserEvent::ShowThreeDotsMenu { x, y });
             }
         }
         _ => {}
@@ -1149,6 +1155,27 @@ fn main() {
     let mut recent_sites = load_recent_sites(&recent_sites_path);
     let mut bookmarks = load_bookmarks(&bookmarks_path);
     let mut downloads = load_downloads(&downloads_path);
+    
+    use muda::{Menu, MenuItem, CheckMenuItem, ContextMenu};
+    use muda::accelerator::{Accelerator, Code, Modifiers};
+    let dots_menu = Menu::new();
+    let m_new_tab = MenuItem::new("New Tab", true, Some(Accelerator::new(Some(Modifiers::SUPER), Code::KeyT)));
+    let m_bookmark = MenuItem::new("Bookmark", true, Some(Accelerator::new(Some(Modifiers::SUPER), Code::KeyD)));
+    let m_history = MenuItem::new("History", true, Some(Accelerator::new(Some(Modifiers::SUPER), Code::KeyY)));
+    let m_downloads = MenuItem::new("Downloads", true, Some(Accelerator::new(Some(Modifiers::SUPER), Code::KeyJ)));
+    let m_theme = CheckMenuItem::new("Light Mode", true, current_theme == "light", None);
+    let m_settings = MenuItem::new("Settings", true, Some(Accelerator::new(Some(Modifiers::SUPER), Code::Comma)));
+    let m_exit = MenuItem::new("Close Tab", true, Some(Accelerator::new(Some(Modifiers::SUPER), Code::KeyW)));
+
+    dots_menu.append_items(&[
+        &m_new_tab, &m_bookmark, &m_history, &m_downloads,
+        &muda::PredefinedMenuItem::separator(),
+        &m_theme, &m_settings,
+        &muda::PredefinedMenuItem::separator(),
+        &m_exit,
+    ]).unwrap();
+
+    let menu_channel = muda::MenuEvent::receiver();
 
     if let Some(initial_tab) = build_browser_tab(
         &window,
@@ -1168,6 +1195,20 @@ fn main() {
 
     event_loop.run(move |event, event_loop_target, control_flow| {
         *control_flow = ControlFlow::Wait;
+
+        if let Ok(event) = menu_channel.try_recv() {
+            if event.id == m_new_tab.id() { let _ = proxy.send_event(UserEvent::NewTab { url: None, activate: true }); }
+            else if event.id == m_bookmark.id() { let _ = proxy.send_event(UserEvent::BookmarkActiveTab(active_tab_id)); }
+            else if event.id == m_history.id() { let _ = proxy.send_event(UserEvent::OpenHistoryTab); }
+            else if event.id == m_downloads.id() { let _ = proxy.send_event(UserEvent::OpenDownloadsTab); }
+            else if event.id == m_theme.id() {
+                let next = if current_theme == "light" { "dark" } else { "light" };
+                let _ = proxy.send_event(UserEvent::SettingsChanged { key: "theme".to_string(), value: next.to_string() });
+            }
+            else if event.id == m_settings.id() { let _ = proxy.send_event(UserEvent::OpenSettingsTab); }
+            else if event.id == m_exit.id() { let _ = proxy.send_event(UserEvent::CloseTab(active_tab_id)); }
+        }
+
         let _keep_context_alive = &web_context;
 
         match event {
@@ -1591,13 +1632,11 @@ fn main() {
                 }
                 _ => {}
             },
-            Event::UserEvent(UserEvent::ToggleMenu(open)) => {
-                let size = window.inner_size().to_logical::<u32>(window.scale_factor());
-                let height = if open { 400.min(size.height) } else { CHROME_HEIGHT.min(size.height) };
-                let _ = chrome_webview.set_bounds(Rect {
-                    position: LogicalPosition::new(0, 0).into(),
-                    size: WryLogicalSize::new(size.width, height).into(),
-                });
+            Event::UserEvent(UserEvent::ShowThreeDotsMenu { x, y }) => {
+                #[cfg(target_os = "macos")]
+                {
+                    dots_menu.show_context_menu_for_nsview(window.ns_view() as _, Some(tao::dpi::LogicalPosition::new(x, y)));
+                }
             }
             _ => {}
         }
