@@ -4,8 +4,8 @@
 
 /* ── Design tokens ───────────────────────────────────────────────────────── */
 :root, [data-theme="dark"], [data-theme="zenith-dark"] {
-    --chrome:        #1c1d22;
-    --chrome-border: rgba(255,255,255,0.07);
+    --chrome:        rgba(28, 29, 34, 0.75);
+    --chrome-border: rgba(255,255,255,0.12);
     --tab-bg:        rgba(255,255,255,0.04);
     --tab-active-bg: #2a2c33;
     --input-bg:      #23252c;
@@ -20,8 +20,8 @@
 }
 
 [data-theme="light"], [data-theme="zenith-light"] {
-    --chrome:        #f4f5f8;
-    --chrome-border: rgba(0,0,0,0.08);
+    --chrome:        rgba(244, 245, 248, 0.75);
+    --chrome-border: rgba(0,0,0,0.12);
     --tab-bg:        rgba(0,0,0,0.04);
     --tab-active-bg: #ffffff;
     --input-bg:      #e8ebf2;
@@ -117,24 +117,33 @@ html, body {
 #ui-shell {
     flex-shrink: 0; z-index: 100;
     background: var(--chrome);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
     border-bottom: 1px solid var(--chrome-border);
     height: 82px;
     pointer-events: auto;
 }
 
 .suggestions-dropdown {
+    width: 100%;
+    max-height: calc(100vh - 160px);
+    overflow-y: auto;
+    background: var(--chrome);
+    backdrop-filter: blur(32px);
+    -webkit-backdrop-filter: blur(32px);
+    border: 1.5px solid var(--accent);
+    border-top: none;
+    border-radius: 0 0 16px 16px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    z-index: 1000;
+}
+
+#ui-shell .suggestions-dropdown {
     position: absolute;
-    top: 82px;
+    top: 81px;
     left: 50%;
     transform: translateX(-50%);
     width: 640px;
-    background: var(--chrome);
-    border: 1.5px solid var(--accent);
-    border-radius: 0 0 16px 16px;
-    box-shadow: var(--shadow);
-    z-index: 1000;
-    overflow: hidden;
-    pointer-events: auto;
 }
 
 /* ── Tab bar ─────────────────────────────────────────────────────────────── */
@@ -395,6 +404,15 @@ html, body {
     flex-shrink: 0;
 }
 
+html, body {
+    width: 100%; height: 100%; margin: 0; padding: 0;
+    font-family: 'Inter', -apple-system, sans-serif;
+    color: var(--text-primary);
+    overflow: hidden;
+    background: transparent !important;
+    background-color: transparent !important;
+}
+
 .perm-bar-icon svg {
     width: 20px;
     height: 20px;
@@ -443,33 +461,49 @@ html, body {
     transform: translateY(-1px);
 }
 
-/* ── Command Palette (Omnibox Upgrade) ────────────────────────────────────── */
-.suggestions-dropdown {
+/* ── Palette Mode ───────────────────────────────────────────────────────── */
+.palette-wrap {
     position: fixed;
-    top: 82px;
+    top: 15vh;
     left: 50%;
     transform: translateX(-50%);
     width: 640px;
-    max-height: calc(100vh - 160px);
-    overflow-y: auto;
-    background: #1c1d22; /* Solid high-visibility background */
-    border: 1.5px solid var(--accent); /* Prominent border */
-    border-radius: 0 0 16px 16px; /* Flat top to sit flush with bar */
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5); /* Tighter shadow for cleaner look */
     z-index: 10000;
-    backdrop-filter: blur(30px) saturate(150%);
-    animation: paletteIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-    pointer-events: all;
+    animation: paletteIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-[data-theme="light"] .suggestions-dropdown {
-    background: #ffffff; /* Solid white for light mode */
-    border-color: #0066ff; /* High-contrast blue for light mode visibility */
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+.palette-input-container {
+    display: flex;
+    align-items: center;
+    background: var(--chrome);
+    backdrop-filter: blur(32px);
+    -webkit-backdrop-filter: blur(32px);
+    border: 1.5px solid var(--accent);
+    border-radius: 16px;
+    padding: 16px 20px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    gap: 16px;
+}
+
+.palette-wrap .suggestions-dropdown {
+    margin-top: 4px;
+    border: 1.5px solid var(--accent);
+    border-radius: 16px;
+}
+
+.palette-icon { width: 22px; height: 22px; color: var(--accent); flex-shrink: 0; }
+.palette-input-container input {
+    flex: 1;
+    background: none;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-size: 18px;
+    font-weight: 500;
 }
 
 @keyframes paletteIn {
-    from { opacity: 0; transform: translateX(-50%) translateY(-12px) scale(0.98); }
+    from { opacity: 0; transform: translateX(-50%) translateY(-20px) scale(0.95); }
     to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
 }
 

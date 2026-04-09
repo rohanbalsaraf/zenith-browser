@@ -103,7 +103,15 @@
         </div>
     </div>
 
-    <div id="suggestions-dropdown" class="suggestions-dropdown hidden"></div>
+    <div id="palette-wrap" class="palette-wrap hidden">
+        <div class="palette-input-container">
+            <svg class="palette-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="text" id="palette-input" placeholder="Search, type URL, or command..." spellcheck="false" autocomplete="off" autofocus>
+        </div>
+        <div id="suggestions-dropdown" class="suggestions-dropdown"></div>
+    </div>
 
     <div id="permission-bar" class="permission-bar hidden">
         <div class="perm-bar-content">
@@ -180,9 +188,12 @@
         const isPaletteMode = urlParams.get('mode') === 'palette';
         if (isPaletteMode) {
             document.body.classList.add('mode-palette');
-            // Nuclear Fix: Physically remove the ui-shell so it cannot render
             const shell = document.getElementById('ui-shell');
             if (shell) shell.remove();
+            
+            // Show palette wrap
+            const paletteWrap = document.getElementById('palette-wrap');
+            if (paletteWrap) paletteWrap.classList.remove('hidden');
         }
 
         const HOME_URL = 'zenith://assets/home';
@@ -472,78 +483,51 @@
             suggestionsDropdown.classList.remove('hidden');
         }
 
-        window.zenithSetSuggestions = (suggestions) => {
-            console.log(`[UI] Received ${suggestions?.length || 0} suggestions`);
-            currentSuggestions = suggestions || [];
-            selectedSuggestionIndex = -1;
-            renderSuggestions();
-        };
-
-        urlInput.oninput = (e) => {
-            const rawValue = urlInput.value;
-            // Immediate Sanity Filter (no debounce for cleaning)
-            const sanitized = rawValue.replace(/[\x00-\x1F\x7F-\x9F]/g, "");
-            
-            if (rawValue !== sanitized) {
-                const start = urlInput.selectionStart;
-                const end = urlInput.selectionEnd;
-                urlInput.value = sanitized;
-                urlInput.setSelectionRange(start, end);
-            }
-
-            const query = urlInput.value.trim();
-            if (query.length === 0) {
-                hideSuggestions();
-                return;
-            }
-            
-            // Debounce only the IPC fetch, not the cleanup
-            debouncedFetch(query);
-        };
+        const paletteInput = document.getElementById('palette-input');
+        const activeInput = isPaletteMode ? paletteInput : urlInput;
 
         const debouncedFetch = debounce((query) => {
             send({ type: 'get_suggestions', query });
         }, 150);
 
-        urlInput.onkeydown = (e) => {
-            if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-                e.stopPropagation(); // Prevent system-level event bubbling that causes glitches
-            }
-
-            if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                selectedSuggestionIndex = Math.min(selectedSuggestionIndex + 1, currentSuggestions.length - 1);
-                renderSuggestions();
-                return;
-            }
-            if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                selectedSuggestionIndex = Math.max(selectedSuggestionIndex - 1, -1);
-                renderSuggestions();
-                return;
-            }
-            if (e.key === 'Escape') {
-                hideSuggestions();
-                return;
-            }
-            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
-                e.preventDefault();
-                urlInput.select();
-                return;
-            }
-            if (e.key === 'Enter') {
-                if (selectedSuggestionIndex >= 0) {
-                    e.preventDefault();
-                    const s = currentSuggestions[selectedSuggestionIndex];
-                    if (s.url) navigateActive(s.url);
-                    else navigateActive(s.title);
-                } else {
-                    navigateActive(urlInput.value);
+        if (activeInput) {
+            activeInput.oninput = (e) => {
+                const query = e.target.value.trim();
+                if (query.length === 0) {
+                    hideSuggestions();
+                    return;
                 }
-                urlInput.blur();
-                hideSuggestions();
-            }
-        };
+                debouncedFetch(query);
+            };
+
+            activeInput.onkeydown = (e) => {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                    e.stopPropagation();
+                }
+
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    selectedSuggestionIndex = Math.min(selectedSuggestionIndex + 1, currentSuggestions.length - 1);
+                    renderSuggestions();
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    selectedSuggestionIndex = Math.max(selectedSuggestionIndex - 1, -1);
+                    renderSuggestions();
+                } else if (e.key === 'Escape') {
+                    hideSuggestions();
+                } else if (e.key === 'Enter') {
+                    if (selectedSuggestionIndex >= 0) {
+                        const s = currentSuggestions[selectedSuggestionIndex];
+                        if (s.url) navigateActive(s.url);
+                        else navigateActive(s.title);
+                    } else {
+                        navigateActive(e.target.value);
+                    }
+                    e.target.blur();
+                    hideSuggestions();
+                }
+            };
+        }
 
         let pendingPermTabId = null;
         let pendingPermType = null;
