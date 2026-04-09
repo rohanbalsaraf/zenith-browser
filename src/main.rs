@@ -305,9 +305,6 @@ fn main() {
                     }
                 });
             }
-            Event::UserEvent(UserEvent::ShowToast { message, toast_type }) => {
-                app.show_toast(&message, &toast_type);
-            }
             Event::UserEvent(UserEvent::PermissionRequest { tab_id, url, permission, request_id }) => {
                 let js = format!("if (window.showPermissionPrompt) window.showPermissionPrompt({}, {}, '{}', '{}');", 
                     tab_id, serde_json::to_string(&url).unwrap(), permission, request_id);
@@ -322,7 +319,6 @@ fn main() {
             Event::UserEvent(UserEvent::GetSuggestions(query)) => {
                 app.fetch_suggestions(query, proxy.clone());
             }
-            Event::UserEvent(UserEvent::SuggestionsShown) | Event::UserEvent(UserEvent::SuggestionsHidden) => {}
 
             Event::UserEvent(UserEvent::SuggestionResults(results)) => {
                 let js = format!("if (window.zenithSetSuggestions) window.zenithSetSuggestions({});", serde_json::to_string(&results).unwrap());

@@ -94,10 +94,6 @@ pub enum UserEvent {
         url: String,
         filename: String,
     },
-    ShowToast {
-        message: String,
-        toast_type: String,
-    },
     ImageContextMenu {
         url: String,
         filename: String,
@@ -122,8 +118,7 @@ pub enum UserEvent {
     },
     GetSuggestions(String),
     SuggestionResults(Vec<Suggestion>),
-    SuggestionsShown,
-    SuggestionsHidden,
+    ChromeState(ChromeState),
 }
 
 #[derive(Debug, Deserialize)]
@@ -267,12 +262,6 @@ pub fn dispatch_ipc_message(
         }
         "hide_suggestions" => {
             let _ = proxy.send_event(UserEvent::GetSuggestions("".to_string()));
-        }
-        "suggestions_shown" => {
-            let _ = proxy.send_event(UserEvent::SuggestionsShown);
-        }
-        "suggestions_hidden" => {
-            let _ = proxy.send_event(UserEvent::SuggestionsHidden);
         }
         "settings-change" | "settings_change" => {
             if let (Some(key), Some(value)) = (message.key, message.value) {

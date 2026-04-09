@@ -413,7 +413,6 @@
             suggestionsDropdown.classList.add('hidden');
             selectedSuggestionIndex = -1;
             suggestionsVisible = false;
-            send({ type: 'suggestions_hidden' });
         }
 
         function renderSuggestions() {
@@ -424,7 +423,6 @@
 
             if (!suggestionsVisible) {
                 suggestionsVisible = true;
-                send({ type: 'suggestions_shown' });
             }
             console.log(`[UI] Rendering ${currentSuggestions.length} items`);
             suggestionsDropdown.innerHTML = '';
