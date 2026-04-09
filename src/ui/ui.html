@@ -616,6 +616,11 @@ document.addEventListener('keydown', (e) => {
         e.preventDefault();
         doFind(!e.shiftKey);
     }
+    if (key === 'l') {
+        e.preventDefault();
+        urlInput.focus();
+        urlInput.select();
+    }
     if (e.key === ',') {
         e.preventDefault();
         openSettingsTab();
