@@ -428,9 +428,8 @@
             suggestionsDropdown.innerHTML = '';
             let lastSection = null;
 
-            currentSuggestions.forEach((s, i) => {
+            currentSuggestions.forEach((s, idx) => {
                 const type = s.suggestionType || s.type;
-                // Add section header if type changes
                 if (type !== lastSection) {
                     const header = document.createElement('div');
                     header.className = 'sugg-header';
@@ -440,30 +439,20 @@
                 }
 
                 const item = document.createElement('div');
-                item.className = 'suggestion-item' + (i === selectedSuggestionIndex ? ' selected' : '');
-
-                // Pick icon
-                let icon = ICONS.shield;
-                if (type === 'history') icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
-                if (type === 'bookmark') icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>';
-
-                if (type === 'tab') icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>';
-
+                item.className = 'suggestion-item' + (idx === selectedSuggestionIndex ? ' selected' : '');
                 item.innerHTML = `
-            <div class="sugg-icon">${icon}</div>
-            <div class="sugg-content">
-                <span class="sugg-title">${s.title}</span>
-                ${s.url ? `<span class="sugg-url">${s.url}</span>` : ''}
-                ${type === 'tab' ? '<span class="sugg-url">Opened Tab</span>' : ''}
-            </div>
-        `;
+                    <div class="sugg-icon">${ICONS[type] || ICONS.search || ICONS.shield}</div>
+                    <div class="sugg-content">
+                        <span class="sugg-title">${s.title}</span>
+                        ${s.url ? `<span class="sugg-url">${s.url}</span>` : ''}
+                        ${type === 'tab' ? '<span class="sugg-url">Already Open — Switch to Tab</span>' : ''}
+                    </div>
+                `;
                 item.onclick = () => {
                     if (type === 'tab' && s.tabId) {
                         send({ type: 'switch_tab', tabId: s.tabId });
                     } else if (s.url) {
                         navigateActive(s.url);
-                    } else {
-                        navigateActive(s.title);
                     }
                     hideSuggestions();
                 };
@@ -549,7 +538,12 @@
         let pendingPermType = null;
         let pendingPermRequestId = null;
 
+        const SECTION_NAMES = { tab: 'Switch to Tab', bookmark: 'Bookmarks', history: 'History' };
         const ICONS = {
+            history: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+            bookmark: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+            tab: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`,
+            search: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
             camera: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
             microphone: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`,
             geolocation: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>`,
