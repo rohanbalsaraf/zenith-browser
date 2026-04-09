@@ -4,8 +4,8 @@
 
 /* ── Design tokens ───────────────────────────────────────────────────────── */
 :root, [data-theme="dark"], [data-theme="zenith-dark"] {
-    --chrome:        rgba(28, 29, 34, 0.85);
-    --chrome-border: rgba(255,255,255,0.15);
+    --chrome:        rgba(28, 29, 34, 0.72);
+    --chrome-border: rgba(255,255,255,0.18);
     --tab-bg:        rgba(255,255,255,0.04);
     --tab-active-bg: #2a2c33;
     --input-bg:      #23252c;
@@ -20,8 +20,8 @@
 }
 
 [data-theme="light"], [data-theme="zenith-light"] {
-    --chrome:        rgba(244, 245, 248, 0.75);
-    --chrome-border: rgba(0,0,0,0.12);
+    --chrome:        rgba(244, 245, 248, 0.72);
+    --chrome-border: rgba(0,0,0,0.15);
     --tab-bg:        rgba(0,0,0,0.04);
     --tab-active-bg: #ffffff;
     --input-bg:      #e8ebf2;
@@ -131,12 +131,12 @@ html, body {
     max-height: calc(100vh - 160px);
     overflow-y: auto;
     background: var(--chrome);
-    backdrop-filter: blur(40px) saturate(160%);
-    -webkit-backdrop-filter: blur(40px) saturate(160%);
+    backdrop-filter: blur(44px) saturate(200%);
+    -webkit-backdrop-filter: blur(44px) saturate(200%);
     border: 1.5px solid var(--accent);
     border-top: none;
     border-radius: 0 0 16px 16px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
     z-index: 1000;
     transform: translateZ(0);
     will-change: backdrop-filter;
@@ -482,12 +482,12 @@ html, body {
     display: flex;
     align-items: center;
     background: var(--chrome);
-    backdrop-filter: blur(40px) saturate(200%);
-    -webkit-backdrop-filter: blur(40px) saturate(200%);
+    backdrop-filter: blur(44px) saturate(220%);
+    -webkit-backdrop-filter: blur(44px) saturate(220%);
     border: 1.5px solid var(--accent);
     border-radius: 16px;
     padding: 16px 20px;
-    box-shadow: 0 20px 80px rgba(0,0,0,0.6);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
     gap: 16px;
     transform: translateZ(0);
     will-change: backdrop-filter;
