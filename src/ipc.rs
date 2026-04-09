@@ -166,6 +166,7 @@ pub fn dispatch_ipc_message(
     proxy: &EventLoopProxy<UserEvent>,
     fallback_tab_id: Option<u32>,
 ) {
+    println!("DEBUG [IPC]: Incoming - {}", raw);
     let Ok(message) = serde_json::from_str::<IpcMessage>(raw) else {
         return;
     };
@@ -206,16 +207,16 @@ pub fn dispatch_ipc_message(
                 let _ = proxy.send_event(UserEvent::TabAction { tab_id, action });
             }
         }
-        "open_settings_tab" => {
+        "open_settings_tab" | "open-settings" => {
             let _ = proxy.send_event(UserEvent::OpenSettingsTab);
         }
-        "open_history_tab" => {
+        "open_history_tab" | "open-history" => {
             let _ = proxy.send_event(UserEvent::OpenHistoryTab);
         }
-        "open_downloads_tab" => {
+        "open_downloads_tab" | "open-downloads" => {
             let _ = proxy.send_event(UserEvent::OpenDownloadsTab);
         }
-        "bookmark_active_tab" => {
+        "bookmark_active_tab" | "bookmark-page" => {
             let _ = proxy.send_event(UserEvent::BookmarkActiveTab(tab_id));
         }
         "open_auth" => {
@@ -301,7 +302,7 @@ pub fn dispatch_ipc_message(
                 let _ = proxy.send_event(UserEvent::ShowThreeDotsMenu { x, y });
             }
         }
-        "find_in_page" => {
+        "find_in_page" | "find-in-page" => {
             if let Some(query) = message.query {
                 let forward = message.forward.unwrap_or(true);
                 let _ = proxy.send_event(UserEvent::FindInPage { query, forward });
