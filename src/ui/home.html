@@ -162,6 +162,71 @@
         .recent-title { font-size: 13px; color: var(--text); margin-left: auto; flex-shrink: 0; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         #bookmarks-section { display: none; }
         #recents-section { display: none; }
+
+        /* Suggestions Dropdown */
+        .suggestions-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            margin-top: 10px;
+            background: var(--card);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            z-index: 1000;
+            overflow: hidden;
+            display: none;
+        }
+        .suggestions-dropdown.visible { display: block; }
+        .suggestion-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 14px;
+            cursor: pointer;
+            transition: all 0.1s ease;
+        }
+        .suggestion-item:hover, .suggestion-item.selected {
+            background: var(--hover-bg);
+        }
+        .sugg-icon {
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+            opacity: 0.6;
+            color: var(--accent);
+        }
+        .sugg-content {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+        .sugg-title {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .sugg-url {
+            font-size: 11px;
+            color: var(--muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .sugg-header {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 10px 14px 4px 14px;
+        }
     </style>
 </head>
 <body>
@@ -180,6 +245,7 @@
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
         </svg>
         <input id="search-input" type="text" placeholder="Search or go to a URL…" autofocus autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+        <div id="suggestions-dropdown" class="suggestions-dropdown"></div>
     </div>
 
     <div class="shortcuts-label">Quick Links</div>
@@ -265,6 +331,58 @@ function go(url) {
 }
 
 // ── Search ────────────────────────────────────────────────────────────────────
+const searchInput = document.getElementById('search-input');
+const suggestionsDropdown = document.getElementById('suggestions-dropdown');
+let currentSuggestions = [];
+let selectedSuggestionIndex = -1;
+
+const ICONS = {
+    history: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+    bookmark: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+    tab: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`,
+    search: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`
+};
+
+function renderSuggestions() {
+    if (currentSuggestions.length === 0) {
+        suggestionsDropdown.classList.remove('visible');
+        return;
+    }
+    suggestionsDropdown.innerHTML = '';
+    let lastSection = null;
+    const SECTION_NAMES = { tab: 'Switch to Tab', bookmark: 'Bookmarks', history: 'History' };
+
+    currentSuggestions.forEach((s, idx) => {
+        const type = s.suggestionType || s.type;
+        if (type !== lastSection) {
+            const header = document.createElement('div');
+            header.className = 'sugg-header';
+            header.innerText = SECTION_NAMES[type] || type;
+            suggestionsDropdown.appendChild(header);
+            lastSection = type;
+        }
+
+        const item = document.createElement('div');
+        item.className = 'suggestion-item' + (idx === selectedSuggestionIndex ? ' selected' : '');
+        item.innerHTML = `
+            <div class="sugg-icon">${ICONS[type] || ICONS.search}</div>
+            <div class="sugg-content">
+                <span class="sugg-title">${s.title}</span>
+                <span class="sugg-url">${s.url || ''}</span>
+            </div>
+        `;
+        item.onclick = () => {
+            if (type === 'tab' && s.tabId) {
+                sendToHost({ type: 'switch_tab', tabId: s.tabId });
+            } else if (s.url) {
+                go(s.url);
+            }
+        };
+        suggestionsDropdown.appendChild(item);
+    });
+    suggestionsDropdown.classList.add('visible');
+}
+
 function searchUrlFor(query) {
     const key = localStorage.getItem('zenith-search-engine') || 'google';
     const map = {
@@ -301,11 +419,37 @@ document.getElementById('search-input').addEventListener('keydown', e => {
         e.stopPropagation();
     }
     
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        e.preventDefault(); // Don't move cursor on up/down
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        selectedSuggestionIndex = Math.min(selectedSuggestionIndex + 1, currentSuggestions.length - 1);
+        renderSuggestions();
+        return;
+    }
+    if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        selectedSuggestionIndex = Math.max(selectedSuggestionIndex - 1, -1);
+        renderSuggestions();
+        return;
+    }
+    if (e.key === 'Escape') {
+        currentSuggestions = [];
+        renderSuggestions();
+        return;
     }
 
     if (e.key !== 'Enter') return;
+    
+    if (selectedSuggestionIndex >= 0) {
+        const s = currentSuggestions[selectedSuggestionIndex];
+        const type = s.suggestionType || s.type;
+        if (type === 'tab' && s.tabId) {
+            sendToHost({ type: 'switch_tab', tabId: s.tabId });
+        } else if (s.url) {
+            go(s.url);
+        }
+        return;
+    }
+
     const q = e.target.value.trim();
     if (!q) return;
     const url = (q.includes('.') && !q.includes(' '))
@@ -363,9 +507,12 @@ window.addEventListener('message', e => {
     if (!e.data || typeof e.data !== 'object') return;
     if (e.data.type === 'theme') {
         applyTheme(e.data.theme);
-        return;
     }
-
+    if (e.data.type === 'suggestion-results') {
+        currentSuggestions = e.data.results || [];
+        selectedSuggestionIndex = -1;
+        renderSuggestions();
+    }
     if (e.data.type === 'recent-sites') {
         renderSiteList('recents-section', 'recents-grid', e.data.sites || []);
         return;

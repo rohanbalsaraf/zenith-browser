@@ -321,8 +321,18 @@ fn main() {
             }
 
             Event::UserEvent(UserEvent::SuggestionResults(results)) => {
-                let js = format!("if (window.zenithSetSuggestions) window.zenithSetSuggestions({});", serde_json::to_string(&results).unwrap());
-                let _ = app.chrome_webview.evaluate_script(&js);
+                let results_json = serde_json::to_string(&results).unwrap();
+                // Send to Chrome UI
+                let js_chrome = format!("if (window.zenithSetSuggestions) window.zenithSetSuggestions({});", results_json);
+                let _ = app.chrome_webview.evaluate_script(&js_chrome);
+
+                // Broadcast to active tab specifically for Home Page unity
+                if let Some(tab_id) = app.active_tab_id {
+                    if let Some(tab) = app.tabs.iter().find(|t| t.id == tab_id) {
+                        let js_tab = format!("window.postMessage({{ type: 'suggestion-results', results: {} }}, '*');", results_json);
+                        let _ = tab.webview.evaluate_script(&js_tab);
+                    }
+                }
             }
             _ => {}
         }
