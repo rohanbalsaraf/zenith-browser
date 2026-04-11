@@ -12,6 +12,7 @@ mod utils;
 
 use app::BrowserApp;
 use ipc::{BrowserAction, UserEvent};
+use muda::ContextMenu;
 use tao::dpi::LogicalSize;
 use tao::event::{Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
