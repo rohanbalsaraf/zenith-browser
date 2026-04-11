@@ -9,10 +9,10 @@ import ErrorBoundary from './components/ErrorBoundary';
 
 export default function App() {
   const [state, setState] = useState<ChromeState>({ tabs: [], activeId: null });
-  const [isPaletteOpen, setIsPaletteOpen] = useState(() => {
+  const isPaletteOpen = (() => {
     const params = new URLSearchParams(window.location.search);
     return params.get('mode') === 'palette';
-  });
+  })();
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(-1);
