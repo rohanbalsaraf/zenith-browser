@@ -5,6 +5,7 @@ import TabBar from './components/TabBar';
 import Toolbar from './components/Toolbar';
 import SuggestionsDropdown from './components/SuggestionsDropdown';
 import PaletteSearch from './components/PaletteSearch';
+import ErrorBoundary from './components/ErrorBoundary';
 
 export default function App() {
   const [state, setState] = useState<ChromeState>({ tabs: [], activeId: null });
@@ -59,11 +60,12 @@ export default function App() {
   const activeTab = state.tabs.find(t => t.id === state.activeId);
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden select-none bg-transparent">
-      {/* Top Navigation & Tabs */}
-      <div className="flex flex-col glass border-b border-zenith-border p-2 gap-2 h-[82px] justify-center">
-        <TabBar tabs={state.tabs} activeId={state.activeId} />
-        <Toolbar 
+    <ErrorBoundary>
+      <div className="flex flex-col h-screen overflow-hidden select-none bg-transparent">
+        {/* Top Navigation & Tabs */}
+        <div className="flex flex-col glass border-b border-zenith-border p-2 gap-2 h-[82px] justify-center">
+          <TabBar tabs={state.tabs} activeId={state.activeId} />
+          <Toolbar 
           activeId={state.activeId}
           activeTab={activeTab}
           searchQuery={searchQuery}
@@ -95,6 +97,7 @@ export default function App() {
           onSearchChange={setSearchQuery}
         />
       )}
-    </div>
+      </div>
+    </ErrorBoundary>
   );
 }
