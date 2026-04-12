@@ -68,6 +68,12 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  useEffect(() => {
+    setSearchQuery('');
+    setSuggestions([]);
+    setSelectedIndex(-1);
+  }, [state.activeId]);
+
   const activeTab = state.tabs.find(t => t.id === state.activeId);
 
   return (
@@ -83,6 +89,7 @@ export default function App() {
           onSearchChange={setSearchQuery}
           onSearchSubmit={(url) => {
             ipc.send({ type: 'navigate', tabId: state.activeId!, url });
+            setSearchQuery('');
           }}
         />
       </div>
