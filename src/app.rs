@@ -97,7 +97,6 @@ impl BrowserApp {
             proxy: proxy.clone(),
         };
 
-        app.new_tab(None, true, proxy);
         app
     }
 
@@ -161,6 +160,7 @@ impl BrowserApp {
             if self.chrome_ready {
                 self.sync_chrome_state(&self.proxy);
             }
+            self.save_session();
         }
     }
 
@@ -172,6 +172,7 @@ impl BrowserApp {
             if self.chrome_ready {
                 self.sync_chrome_state(&self.proxy);
             }
+            self.save_session();
         }
     }
 
@@ -194,6 +195,7 @@ impl BrowserApp {
             if self.chrome_ready {
                 self.sync_chrome_state(&self.proxy);
             }
+            self.save_session();
         }
     }
 
@@ -218,6 +220,7 @@ impl BrowserApp {
                     if self.chrome_ready {
                         self.sync_chrome_state(&self.proxy);
                     }
+                    self.save_session();
                 }
             }
         }
@@ -460,5 +463,49 @@ impl BrowserApp {
 
             let _ = proxy.send_event(UserEvent::SuggestionResults(results));
         });
+    }
+
+    pub fn save_session(&self) {
+        let db = self.db.clone();
+        let active_id = self.active_tab_id;
+        let tabs_snapshot = self
+            .tabs
+            .iter()
+            .enumerate()
+            .map(|(idx, t)| crate::config::SessionTab {
+                url: t.url.clone(),
+                title: t.title.clone(),
+                is_active: Some(t.id) == active_id,
+                position: idx as i32,
+            })
+            .collect::<Vec<_>>();
+
+        tokio::spawn(async move {
+            if let Err(e) = db.save_session(tabs_snapshot).await {
+                eprintln!("[DB] Failed to save session: {e}");
+            }
+        });
+    }
+
+    pub async fn initial_load(&mut self, proxy: &EventLoopProxy<UserEvent>) {
+        match self.db.get_session().await {
+            Ok(tabs) if !tabs.is_empty() => {
+                let mut active_tab_id = None;
+                for tab_data in tabs {
+                    self.new_tab(Some(tab_data.url), false, proxy);
+                    if tab_data.is_active {
+                        active_tab_id = self.tabs.last().map(|t| t.id);
+                    }
+                }
+                if let Some(id) = active_tab_id {
+                    self.switch_tab(id);
+                } else if let Some(last) = self.tabs.last() {
+                    self.switch_tab(last.id);
+                }
+            }
+            _ => {
+                self.new_tab(None, true, proxy);
+            }
+        }
     }
 }

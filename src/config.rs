@@ -21,6 +21,14 @@ pub struct DownloadEntry {
     pub status: String,
 }
 
+#[derive(Clone, Serialize, Deserialize, Debug, sqlx::FromRow)]
+pub struct SessionTab {
+    pub url: String,
+    pub title: String,
+    pub is_active: bool,
+    pub position: i32,
+}
+
 pub fn profile_directory() -> PathBuf {
     if let Some(home) = std::env::var_os("HOME") {
         PathBuf::from(home).join(".zenith").join("profile")

@@ -37,6 +37,7 @@ async fn main() {
     }
 
     let mut app = BrowserApp::new(&event_loop, &proxy, db.clone());
+    app.initial_load(&proxy).await;
 
     event_loop.run(move |event, event_loop_target, control_flow| {
         *control_flow = ControlFlow::Wait;
@@ -227,6 +228,7 @@ async fn main() {
                         tab.active_permissions.retain(|perm| perm != &p);
                     }
                     if app.chrome_ready { app.sync_chrome_state(&proxy); }
+                    app.save_session();
                 }
             }
             Event::UserEvent(UserEvent::TabUrlChanged { tab_id, url }) => {
@@ -255,6 +257,7 @@ async fn main() {
                         app.sync_tab_data(index, &proxy);
                     }
                     if app.chrome_ready { app.sync_chrome_state(&proxy); }
+                    app.save_session();
                 }
             }
             Event::UserEvent(UserEvent::TabTitleChanged { tab_id, title }) => {
@@ -273,6 +276,7 @@ async fn main() {
                         app.sync_tab_data(index, &proxy);
                     }
                     if app.chrome_ready { app.sync_chrome_state(&proxy); }
+                    app.save_session();
                 }
             }
             Event::UserEvent(UserEvent::SettingsChanged { key, value }) => {

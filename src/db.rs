@@ -68,7 +68,51 @@ impl Database {
             .execute(&self.pool)
             .await?;
 
+        // Create Sessions Table
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS session_tabs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                url TEXT NOT NULL,
+                title TEXT NOT NULL,
+                is_active BOOLEAN NOT NULL,
+                position INTEGER NOT NULL
+            )",
+        )
+        .execute(&self.pool)
+        .await?;
+
         Ok(())
+    }
+
+    pub async fn save_session(
+        &self,
+        tabs: Vec<crate::config::SessionTab>,
+    ) -> Result<(), sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("DELETE FROM session_tabs")
+            .execute(&mut *tx)
+            .await?;
+        for tab in tabs {
+            sqlx::query(
+                "INSERT INTO session_tabs (url, title, is_active, position) VALUES (?, ?, ?, ?)",
+            )
+            .bind(&tab.url)
+            .bind(&tab.title)
+            .bind(tab.is_active)
+            .bind(tab.position)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
+    pub async fn get_session(&self) -> Result<Vec<crate::config::SessionTab>, sqlx::Error> {
+        sqlx::query_as::<_, crate::config::SessionTab>(
+            "SELECT url, title, is_active, position FROM session_tabs ORDER BY position ASC",
+        )
+        .fetch_all(&self.pool)
+        .await
     }
 
     pub async fn migrate_from_json(&self) -> Result<(), sqlx::Error> {
