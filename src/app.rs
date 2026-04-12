@@ -178,13 +178,13 @@ impl BrowserApp {
     pub fn close_tab(&mut self, tab_id: Option<u32>, control_flow: &mut ControlFlow) {
         if let Some(close_id) = tab_id.or(self.active_tab_id) {
             if let Some(idx) = self.tabs.iter().position(|t| t.id == close_id) {
-                if self.tabs.len() <= 1 {
-                    *control_flow = ControlFlow::Exit;
-                    return;
-                }
-
+                let is_last = self.tabs.len() <= 1;
+                
                 self.tabs.remove(idx);
-                if self.active_tab_id == Some(close_id) {
+                
+                if is_last {
+                    self.new_tab(None, true, &self.proxy.clone());
+                } else if self.active_tab_id == Some(close_id) {
                     let next_idx = idx.saturating_sub(1);
                     self.active_tab_id = self.tabs.get(next_idx).map(|t| t.id);
                 }
