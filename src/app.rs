@@ -133,6 +133,7 @@ impl BrowserApp {
         url: Option<String>,
         activate: bool,
         proxy: &EventLoopProxy<UserEvent>,
+        is_incognito: bool,
     ) {
         let start_url =
             normalize_user_input_url(url.as_deref().unwrap_or(HOME_URL), &self.current_search_url);
@@ -144,6 +145,7 @@ impl BrowserApp {
             &start_url,
             Self::content_bounds(&self.window),
             proxy,
+            is_incognito,
         ) {
             Self::apply_theme_to_webview(&tab.webview, &self.current_theme);
             self.tabs.push(tab);
@@ -184,7 +186,7 @@ impl BrowserApp {
                 self.tabs.remove(idx);
                 
                 if is_last {
-                    self.new_tab(None, true, &self.proxy.clone());
+                    self.new_tab(None, true, &self.proxy.clone(), false);
                 } else if self.active_tab_id == Some(close_id) {
                     let next_idx = idx.saturating_sub(1);
                     self.active_tab_id = self.tabs.get(next_idx).map(|t| t.id);
@@ -255,6 +257,7 @@ impl BrowserApp {
                     t.title.clone(),
                     t.url.clone(),
                     t.active_permissions.clone(),
+                    t.is_incognito,
                 )
             })
             .collect::<Vec<_>>();
@@ -263,7 +266,7 @@ impl BrowserApp {
 
         tokio::spawn(async move {
             let mut tabs_state = Vec::new();
-            for (id, title, url, permissions) in tabs_snapshot {
+            for (id, title, url, permissions, is_incognito) in tabs_snapshot {
                 let is_bm = sqlx::query("SELECT 1 FROM bookmarks WHERE url = ?")
                     .bind(&url)
                     .fetch_optional(&db.pool)
@@ -277,6 +280,7 @@ impl BrowserApp {
                     url,
                     is_bookmarked: is_bm,
                     active_permissions: permissions,
+                    is_incognito,
                 });
             }
 
@@ -336,7 +340,7 @@ impl BrowserApp {
                 if tab_url.starts_with(HOME_URL) {
                     if let Ok(recent) = db.get_recent_history(20).await {
                         if let Ok(sites_json) = serde_json::to_string(&recent) {
-                            scripts.push(format!("window.postMessage({{ type: 'recent-sites', sites: {sites_json} }}, '*');"));
+                            scripts.push(format!("window.postMessage({{ type: 'recent-sites', sites: {sites_json}, devices: [{{ deviceId: 'zenith-vcam', kind: 'videoinput', label: 'Zenith Camera (Permission Required)', groupId: 'zenith-media' }}, {{ deviceId: 'zenith-vmic', kind: 'audioinput', label: 'Zenith Microphone (Permission Required)', groupId: 'zenith-media' }}] }}, '*');"));
                         }
                     }
                     if let Ok(bm) = db.get_bookmarks().await {
@@ -471,6 +475,7 @@ impl BrowserApp {
         let tabs_snapshot = self
             .tabs
             .iter()
+            .filter(|t| !t.is_incognito)
             .enumerate()
             .map(|(idx, t)| crate::config::SessionTab {
                 url: t.url.clone(),
@@ -492,7 +497,7 @@ impl BrowserApp {
             Ok(tabs) if !tabs.is_empty() => {
                 let mut active_tab_id = None;
                 for tab_data in tabs {
-                    self.new_tab(Some(tab_data.url), false, proxy);
+                    self.new_tab(Some(tab_data.url), false, proxy, false);
                     if tab_data.is_active {
                         active_tab_id = self.tabs.last().map(|t| t.id);
                     }
@@ -504,7 +509,7 @@ impl BrowserApp {
                 }
             }
             _ => {
-                self.new_tab(None, true, proxy);
+                self.new_tab(None, true, proxy, false);
             }
         }
     }

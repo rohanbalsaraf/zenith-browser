@@ -4,6 +4,7 @@ use muda::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 pub struct AppMenu {
     pub menu_bar: Menu,
     pub m_new_tab: MenuItem,
+    pub m_new_incognito_tab: MenuItem,
     pub m_close_tab: MenuItem,
     pub m_bookmark: MenuItem,
     pub m_settings: MenuItem,
@@ -50,6 +51,14 @@ impl AppMenu {
             true,
             Some(Accelerator::new(Some(Modifiers::SUPER), Code::KeyT)),
         );
+        let m_new_incognito_tab = MenuItem::new(
+            "New Incognito Tab",
+            true,
+            Some(Accelerator::new(
+                Some(Modifiers::SUPER | Modifiers::SHIFT),
+                Code::KeyN,
+            )),
+        );
         let m_close_tab = MenuItem::new(
             "Close Tab",
             true,
@@ -68,6 +77,7 @@ impl AppMenu {
         tab_menu
             .append_items(&[
                 &m_new_tab,
+                &m_new_incognito_tab,
                 &m_close_tab,
                 &PredefinedMenuItem::separator(),
                 &m_bookmark,
@@ -144,6 +154,7 @@ impl AppMenu {
         dots_menu
             .append_items(&[
                 &m_new_tab,
+                &m_new_incognito_tab,
                 &m_bookmark,
                 &m_history,
                 &m_downloads,
@@ -166,6 +177,7 @@ impl AppMenu {
         Self {
             menu_bar,
             m_new_tab,
+            m_new_incognito_tab,
             m_close_tab,
             m_bookmark,
             m_settings,

@@ -6,6 +6,7 @@ import Toolbar from './components/Toolbar';
 import SuggestionsDropdown from './components/SuggestionsDropdown';
 import PaletteSearch from './components/PaletteSearch';
 import ErrorBoundary from './components/ErrorBoundary';
+import { cn } from './utils';
 
 export default function App() {
   const [state, setState] = useState<ChromeState>({ tabs: [], activeId: null });
@@ -80,7 +81,10 @@ export default function App() {
     <ErrorBoundary>
       <div className="flex flex-col h-screen overflow-hidden select-none bg-transparent">
         {/* Top Navigation & Tabs */}
-        <div className="flex flex-col glass border-b border-zenith-border p-2 gap-2 h-[82px] justify-center">
+        <div className={cn(
+          "flex flex-col glass border-b p-2 gap-2 h-[82px] justify-center transition-colors duration-500",
+          activeTab?.isIncognito ? "border-purple-500/30 bg-purple-950/20" : "border-zenith-border"
+        )}>
           <TabBar tabs={state.tabs} activeId={state.activeId} />
           <Toolbar 
           activeId={state.activeId}

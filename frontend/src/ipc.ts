@@ -23,6 +23,7 @@ export interface ChromeTabState {
   url: string;
   isBookmarked: boolean;
   activePermissions: string[];
+  isIncognito: boolean;
 }
 
 export interface ChromeState {
@@ -32,7 +33,7 @@ export interface ChromeState {
 
 export type IpcMessage = 
   | { type: 'chrome_ready' }
-  | { type: 'new_tab', url?: string, activate: boolean }
+  | { type: 'new_tab', url?: string, activate: boolean, isIncognito?: boolean }
   | { type: 'switch_tab', tabId: number }
   | { type: 'close_tab', tabId: number }
   | { type: 'navigate', tabId?: number, url: string }

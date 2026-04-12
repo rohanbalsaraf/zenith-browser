@@ -28,6 +28,7 @@ pub struct ChromeTabState {
     pub url: String,
     pub is_bookmarked: bool,
     pub active_permissions: Vec<String>,
+    pub is_incognito: bool,
 }
 
 #[derive(Debug, serde::Serialize, Clone)]
@@ -43,6 +44,7 @@ pub enum UserEvent {
     NewTab {
         url: Option<String>,
         activate: bool,
+        is_incognito: bool,
     },
     SwitchTab(u32),
     CloseTab(Option<u32>),
@@ -162,6 +164,8 @@ pub struct IpcMessage {
     pub decision: Option<String>,
     #[serde(default)]
     pub granted: Option<bool>,
+    #[serde(default)]
+    pub is_incognito: Option<bool>,
 }
 
 pub fn dispatch_ipc_message(
@@ -183,6 +187,7 @@ pub fn dispatch_ipc_message(
             let _ = proxy.send_event(UserEvent::NewTab {
                 url: message.url,
                 activate: true,
+                is_incognito: message.is_incognito.unwrap_or(false),
             });
         }
         "switch_tab" => {

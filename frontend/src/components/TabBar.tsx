@@ -1,4 +1,4 @@
-import { Plus, X } from 'lucide-react';
+import { Plus, X, Ghost } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { ipc } from '../ipc';
@@ -24,10 +24,13 @@ export default function TabBar({ tabs, activeId }: TabBarProps) {
             className={cn(
               "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-all min-w-[120px] max-w-[200px] border border-transparent truncate whitespace-nowrap",
               tab.id === activeId 
-                ? "bg-white/10 text-white border-white/10" 
-                : "text-zenith-text-muted hover:bg-white/5 hover:text-white"
+                ? (tab.isIncognito ? "bg-purple-600/30 text-purple-100 border-purple-500/40 shadow-[0_0_10px_rgba(168,85,247,0.15)]" : "bg-white/10 text-white border-white/10") 
+                : (tab.isIncognito ? "text-purple-300/60 hover:bg-purple-900/20 hover:text-purple-200" : "text-zenith-text-muted hover:bg-white/5 hover:text-white")
             )}
           >
+            {tab.isIncognito && (
+              <Ghost size={12} className={cn("shrink-0", tab.id === activeId ? "text-purple-300" : "text-purple-400/50")} />
+            )}
             <span className="flex-1 truncate">{tab.title || 'New Tab'}</span>
             <button 
               onClick={(e) => {

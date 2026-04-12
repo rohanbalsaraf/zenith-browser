@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronLeft, ChevronRight, RotateCw, Settings, History, Download, Bookmark, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RotateCw, Settings, History, Download, Bookmark, Search, Ghost } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { ipc } from '../ipc';
 import type { ChromeTabState } from '../ipc';
@@ -41,10 +41,13 @@ export default function Toolbar({
 
       <div className="flex-1 relative group">
         <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zenith-text-muted group-focus-within:text-zenith-primary transition-colors">
-          <Search size={14} />
+          {activeTab?.isIncognito ? <Ghost size={14} className="text-purple-400" /> : <Search size={14} />}
         </div>
         <input 
-          className="w-full glass rounded-full py-1.5 pl-9 pr-10 text-sm focus:outline-none focus:border-zenith-primary/50 focus:bg-white/10 transition-all placeholder:text-zenith-text-muted"
+          className={cn(
+            "w-full glass rounded-full py-1.5 pl-9 pr-10 text-sm focus:outline-none focus:border-zenith-primary/50 focus:bg-white/10 transition-all placeholder:text-zenith-text-muted",
+            activeTab?.isIncognito && "border-purple-500/20 focus:border-purple-500/50"
+          )}
           placeholder="Search or enter URL"
           value={searchQuery || (activeTab?.url || '')}
           onChange={(e) => onSearchChange(e.target.value)}

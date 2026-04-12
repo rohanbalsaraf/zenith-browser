@@ -48,15 +48,17 @@ async fn main() {
 
         if let Event::UserEvent(UserEvent::MenuAction(ref menu_id)) = event {
             if *menu_id == app.menu.m_new_tab.id() {
-                app.new_tab(None, true, &proxy);
+                app.new_tab(None, true, &proxy, false);
+            } else if *menu_id == app.menu.m_new_incognito_tab.id() {
+                app.new_tab(None, true, &proxy, true);
             } else if menu_id == app.menu.m_close_tab.id() {
                 app.close_tab(app.active_tab_id, control_flow);
             } else if menu_id == app.menu.m_bookmark.id() {
                 app.toggle_bookmark(app.active_tab_id);
             } else if menu_id == app.menu.m_history.id() {
-                app.new_tab(Some(utils::HISTORY_URL.to_string()), true, &proxy);
+                app.new_tab(Some(utils::HISTORY_URL.to_string()), true, &proxy, false);
             } else if menu_id == app.menu.m_downloads.id() {
-                app.new_tab(Some(utils::DOWNLOADS_URL.to_string()), true, &proxy);
+                app.new_tab(Some(utils::DOWNLOADS_URL.to_string()), true, &proxy, false);
             } else if menu_id == app.menu.m_find.id() {
                 let _ = proxy.send_event(UserEvent::OpenFindBar);
             } else if menu_id == app.menu.m_reload.id() {
@@ -65,7 +67,7 @@ async fn main() {
                 let next = if app.current_theme == "light" { "dark" } else { "light" };
                 let _ = proxy.send_event(UserEvent::SettingsChanged { key: "theme".to_string(), value: next.to_string() });
             } else if menu_id == app.menu.m_settings.id() {
-                app.new_tab(Some(utils::SETTINGS_URL.to_string()), true, &proxy);
+                app.new_tab(Some(utils::SETTINGS_URL.to_string()), true, &proxy, false);
             } else if *menu_id == app.menu.img_save.id() {
                 let img_data = if let Ok(guard) = app.img_ctx.lock() { guard.clone() } else { None };
                 if let Some((url, filename)) = img_data {
@@ -74,7 +76,7 @@ async fn main() {
             } else if *menu_id == app.menu.img_open.id() {
                 let img_data = if let Ok(guard) = app.img_ctx.lock() { guard.clone() } else { None };
                 if let Some((url, _)) = img_data {
-                    app.new_tab(Some(url), true, &proxy);
+                    app.new_tab(Some(url), true, &proxy, false);
                 }
             } else if *menu_id == app.menu.m_inspect.id() {
                 if let Some(tab_id) = app.active_tab_id {
@@ -96,8 +98,8 @@ async fn main() {
                 app.chrome_ready = true;
                 app.sync_chrome_ready(&proxy);
             }
-            Event::UserEvent(UserEvent::NewTab { url, activate }) => {
-                app.new_tab(url, activate, &proxy);
+            Event::UserEvent(UserEvent::NewTab { url, activate, is_incognito }) => {
+                app.new_tab(url, activate, &proxy, is_incognito);
             }
             Event::UserEvent(UserEvent::SwitchTab(tab_id)) => {
                 app.switch_tab(tab_id);
@@ -112,13 +114,13 @@ async fn main() {
                 app.tab_action(tab_id, action);
             }
             Event::UserEvent(UserEvent::OpenSettingsTab) => {
-                app.new_tab(Some(utils::SETTINGS_URL.to_string()), true, &proxy);
+                app.new_tab(Some(utils::SETTINGS_URL.to_string()), true, &proxy, false);
             }
             Event::UserEvent(UserEvent::OpenHistoryTab) => {
-                app.new_tab(Some(utils::HISTORY_URL.to_string()), true, &proxy);
+                app.new_tab(Some(utils::HISTORY_URL.to_string()), true, &proxy, false);
             }
             Event::UserEvent(UserEvent::OpenDownloadsTab) => {
-                app.new_tab(Some(utils::DOWNLOADS_URL.to_string()), true, &proxy);
+                app.new_tab(Some(utils::DOWNLOADS_URL.to_string()), true, &proxy, false);
             }
             Event::UserEvent(UserEvent::BookmarkActiveTab(tab_id)) => {
                 app.toggle_bookmark(tab_id);

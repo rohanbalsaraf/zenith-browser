@@ -14,6 +14,7 @@ pub struct BrowserTab {
     pub title: String,
     pub webview: WebView,
     pub active_permissions: Vec<String>,
+    pub is_incognito: bool,
 }
 
 pub fn get_user_agent_data_js() -> String {
@@ -250,6 +251,7 @@ pub fn build_browser_tab(
     url: &str,
     bounds: Rect,
     proxy: &EventLoopProxy<UserEvent>,
+    is_incognito: bool,
 ) -> Option<BrowserTab> {
     let popup_proxy = proxy.clone();
     let title_proxy = proxy.clone();
@@ -260,6 +262,7 @@ pub fn build_browser_tab(
     let init_script = tab_initialization_script(tab_id);
 
     let webview_builder = WebViewBuilder::new_with_web_context(web_context)
+        .with_incognito(is_incognito)
         .with_user_agent(CUSTOM_USER_AGENT)
         .with_bounds(bounds)
         .with_url(url)
@@ -291,6 +294,7 @@ pub fn build_browser_tab(
                 let _ = popup_proxy.send_event(UserEvent::NewTab {
                     url: Some(next_url),
                     activate: true,
+                    is_incognito,
                 });
                 wry::NewWindowResponse::Deny
             } else {
@@ -350,5 +354,6 @@ pub fn build_browser_tab(
         title: "Zenith".to_string(),
         webview,
         active_permissions: Vec::new(),
+        is_incognito,
     })
 }
